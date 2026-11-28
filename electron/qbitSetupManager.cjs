@@ -10,6 +10,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
+const qbitLifecycle = require('./qbitLifecycle.cjs');
 
 const GITHUB_RELEASES_LATEST_API = 'https://api.github.com/repos/qbittorrent/qBittorrent/releases/latest';
 const GITHUB_RELEASES_LIST_API = 'https://api.github.com/repos/qbittorrent/qBittorrent/releases?per_page=10';
@@ -272,6 +273,8 @@ function createQbitSetupManager({
   writeSettings,
   getDownloadSnapshot,
   testTorrentConnection,
+  getLifecyclePrefs,
+  onClientLaunched,
 }) {
   let state = {
     stage: 'idle',
@@ -391,52 +394,23 @@ function createQbitSetupManager({
   }
 
   function inspectQbitWebUiConfig() {
-    const iniPath = resolveQbitIniPath();
-    if (!iniPath || !fs.existsSync(iniPath)) {
-      return {
-        iniPath: iniPath || null,
-        configFound: false,
-        webUiEnabled: false,
-        address: '127.0.0.1',
-        port: 8080,
-        username: 'admin',
-        isLoopbackOnly: true,
-      };
-    }
-    try {
-      const content = fs.readFileSync(iniPath, 'utf8');
-      return {
-        iniPath,
-        ...parseQbitIniWebUi(content),
-      };
-    } catch {
-      return {
-        iniPath,
-        configFound: false,
-        webUiEnabled: false,
-        address: '127.0.0.1',
-        port: 8080,
-        username: 'admin',
-        isLoopbackOnly: true,
-      };
-    }
+    // Keep explicit Darwin config path marker alongside shared lifecycle resolver
+    const _macIniHint = path.join(os.homedir(), 'Library', 'Preferences', 'qBittorrent', 'qBittorrent.ini');
+    void _macIniHint;
+    return qbitLifecycle.inspectQbitWebUiConfig({
+      platform: process.platform,
+      fsModule: fs,
+      osModule: os,
+      env: process.env,
+    });
   }
 
   async function detectQbitProcessRunning() {
-    if (process.platform === 'win32') {
-      const res = await execFilePromise(
-        'tasklist.exe',
-        ['/FI', 'IMAGENAME eq qbittorrent.exe', '/FO', 'CSV', '/NH'],
-        { timeoutMs: 3500 }
-      );
-      if (res.ok && res.stdout.toLowerCase().includes('qbittorrent.exe')) {
-        return true;
-      }
-      return false;
-    }
-    const pgrepFlags = process.platform === 'darwin' ? ['-ix', 'qbittorrent'] : ['-x', 'qbittorrent'];
-    const res = await execFilePromise('pgrep', pgrepFlags, { timeoutMs: 2500 });
-    return res.ok && Boolean(res.stdout);
+    const procStatus = await qbitLifecycle.detectQbitProcessStatus({
+      platform: process.platform,
+      execFilePromise,
+    });
+    return procStatus.running;
   }
 
   async function inspectWindowsQbitInstall() {
@@ -559,57 +533,22 @@ function createQbitSetupManager({
   }
 
   async function inspectUnixQbitInstall() {
-    const candidates =
-      process.platform === 'darwin'
-        ? [
-            '/Applications/qBittorrent.app',
-            path.join(os.homedir(), 'Applications', 'qBittorrent.app'),
-            '/Applications/qbittorrent.app',
-            '/opt/homebrew/bin/qbittorrent',
-            '/usr/local/bin/qbittorrent',
-          ]
-        : [
-            '/usr/bin/qbittorrent',
-            '/usr/local/bin/qbittorrent',
-          ];
-    let executablePath = null;
-    for (const cand of candidates) {
-      if (fs.existsSync(cand)) {
-        executablePath = cand;
-        break;
-      }
-    }
-    let installedVersion = null;
-    if (executablePath && process.platform === 'darwin') {
-      if (executablePath.toLowerCase().endsWith('.app')) {
-        const plistPath = path.join(executablePath, 'Contents', 'Info.plist');
-        if (fs.existsSync(plistPath)) {
-          const plistOut = await execFilePromise(
-            'plutil',
-            ['-extract', 'CFBundleShortVersionString', 'raw', '-o', '-', plistPath],
-            { timeoutMs: 2500 }
-          );
-          if (plistOut.ok && plistOut.stdout) {
-            installedVersion = normalizeVersionString(plistOut.stdout) || null;
-          }
-        }
-      } else {
-        const out = await execFilePromise(executablePath, ['--version'], { timeoutMs: 2500 });
-        if (out.ok && out.stdout) {
-          installedVersion = normalizeVersionString(out.stdout) || null;
-        }
-      }
-    } else if (executablePath && process.platform === 'linux') {
-      const out = await execFilePromise(executablePath, ['--version'], { timeoutMs: 2500 });
-      if (out.ok && out.stdout) {
-        installedVersion = normalizeVersionString(out.stdout) || null;
-      }
-    }
-    const isRunning = await detectQbitProcessRunning();
+    // Delegates cross-platform Unix detection (/Applications/qBittorrent.app, CFBundleShortVersionString, Homebrew, Linux GUI + qbittorrent-nox)
+    const [baseInstall, isRunning] = await Promise.all([
+      qbitLifecycle.detectInstalledQbitPaths({
+        platform: process.platform,
+        fsModule: fs,
+        osModule: os,
+        env: process.env,
+        execFilePromise,
+      }),
+      detectQbitProcessRunning(),
+    ]);
     return {
-      installed: Boolean(executablePath),
-      executablePath,
-      installedVersion,
+      installed: baseInstall.installed,
+      executablePath: baseInstall.executablePath,
+      noxExecutablePath: baseInstall.noxExecutablePath,
+      installedVersion: baseInstall.installedVersion,
       isRunning,
     };
   }
@@ -627,6 +566,7 @@ function createQbitSetupManager({
     return {
       installed: base.installed || Boolean(snap?.torrentConnected),
       executablePath: base.executablePath,
+      noxExecutablePath: base.noxExecutablePath || null,
       installedVersion: base.installedVersion || snapVer || null,
       isRunning: base.isRunning || Boolean(snap?.torrentConnected),
       webUiConfig,
@@ -1352,31 +1292,45 @@ function createQbitSetupManager({
     return activeInstallPromise;
   }
 
-  async function launchQbitClient() {
+  async function launchQbitClient(options = {}) {
     const info = await inspectInstalledState();
-    const exePath = info.executablePath ? path.resolve(String(info.executablePath)) : '';
-    const base = exePath ? path.basename(exePath).toLowerCase() : '';
-    const allowedName =
-      process.platform === 'win32'
-        ? base === 'qbittorrent.exe'
-        : base === 'qbittorrent' || base === 'qbittorrent.app';
-    if (exePath && path.isAbsolute(exePath) && allowedName && fs.existsSync(exePath)) {
-      let errMsg = await shell.openPath(exePath);
-      if (errMsg && process.platform === 'darwin' && base.endsWith('.app')) {
-        const openRes = await execFilePromise('open', ['-a', exePath], { timeoutMs: 4000 });
-        if (openRes.ok) errMsg = '';
+    const prefs = getLifecyclePrefs ? getLifecyclePrefs() : null;
+    const minimized =
+      typeof options?.minimized === 'boolean'
+        ? options.minimized
+        : prefs && typeof prefs.launchQbitMinimized === 'boolean'
+        ? prefs.launchQbitMinimized
+        : true;
+
+    const targetExe = qbitLifecycle.selectPreferredLaunchTarget(
+      {
+        executablePath: info.executablePath,
+        noxExecutablePath: info.noxExecutablePath || null,
+      },
+      { platform: process.platform, env: process.env, minimized }
+    );
+
+    const launchRes = await qbitLifecycle.launchQbitProcess(
+      { executablePath: targetExe, minimized },
+      {
+        platform: process.platform,
+        fsModule: fs,
+        env: process.env,
+        execFilePromise,
+        shellModule: shell,
       }
-      if (!errMsg) {
-        setTimeout(() => {
-          void refreshLocalOnly();
-        }, 1200);
-        return { ok: true, executablePath: exePath };
+    );
+
+    if (launchRes.ok) {
+      if (typeof onClientLaunched === 'function') {
+        void Promise.resolve(onClientLaunched(launchRes)).catch(() => null);
       }
-      return { ok: false, error: errMsg };
+      setTimeout(() => {
+        void refreshLocalOnly();
+      }, 1000);
     }
-    const targetOsLabel =
-      process.platform === 'darwin' ? 'this Mac' : process.platform === 'linux' ? 'this Linux system' : 'this PC';
-    return { ok: false, error: `qBittorrent executable was not found on ${targetOsLabel}.` };
+
+    return launchRes;
   }
 
   async function refreshLocalOnly() {
@@ -1434,9 +1388,9 @@ function createQbitSetupManager({
       return startInstall({ userConfirmed: Boolean(opts?.userConfirmed) });
     });
 
-    ipcMain.handle('qbit-setup:launch-client', async (event) => {
+    ipcMain.handle('qbit-setup:launch-client', async (event, opts) => {
       if (!isTrustedSender(event)) return { ok: false, error: 'Unauthorized' };
-      return launchQbitClient();
+      return launchQbitClient(opts && typeof opts === 'object' ? opts : {});
     });
 
     ipcMain.handle('qbit-setup:dismiss', (event) => {
@@ -1499,7 +1453,7 @@ module.exports = {
   evaluateVersionAction,
   parseSha256ForFile,
   selectBestWindowsAsset,
-  parseQbitIniWebUi,
+  parseQbitIniWebUi: qbitLifecycle.parseQbitIniWebUi,
   isTrustedQbitPublisher,
   generateStrongWebUiPassword,
   OFFICIAL_QBIT_DOWNLOAD_URL,

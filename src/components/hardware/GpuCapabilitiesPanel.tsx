@@ -88,7 +88,7 @@ export function GpuCapabilitiesPanel({ language, snapshot }: GpuCapabilitiesPane
       <section className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md space-y-2">
         <div className="flex items-start gap-3">
           <div className="sa-icon-badge w-9 h-9 flex items-center justify-center shrink-0">
-            <GraphicsCard weight="duotone" className="w-5 h-5" />
+            <GraphicsCard className="w-5 h-5" />
           </div>
           <div>
             <h2 className="font-display text-[16px] font-bold text-slate-900 dark:text-white">{t.techTitle}</h2>
@@ -182,7 +182,7 @@ export function GpuCapabilitiesPanel({ language, snapshot }: GpuCapabilitiesPane
         {/* Display & Windows Gaming Settings */}
         <article className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md space-y-3">
           <div className="flex items-center gap-2.5">
-            <Monitor weight="duotone" className="w-5 h-5 text-[var(--sa-accent)] shrink-0" />
+            <Monitor className="w-5 h-5 text-[var(--sa-accent)] shrink-0" />
             <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">{t.displayTitle}</h3>
           </div>
 
@@ -269,9 +269,9 @@ export function GpuCapabilitiesPanel({ language, snapshot }: GpuCapabilitiesPane
         <article className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md space-y-3">
           <div className="flex items-center gap-2.5">
             {laptop?.isLaptopOrBatteryDevice ? (
-              <BatteryCharging weight="duotone" className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
+              <BatteryCharging className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
             ) : (
-              <Laptop weight="duotone" className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
+              <Laptop className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
             )}
             <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">{t.laptopTitle}</h3>
           </div>

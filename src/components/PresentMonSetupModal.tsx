@@ -88,12 +88,12 @@ export function PresentMonSetupModal({
         <div className="flex items-start justify-between gap-3 px-4 sm:px-6 py-4 border-b border-slate-200 dark:border-white/[0.08]">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="sa-icon-badge w-11 h-11 shrink-0">
-              <Gauge weight="duotone" className="w-6 h-6" />
+              <Gauge className="w-5.5 h-5.5" />
             </div>
             <div className="min-w-0">
               <h2
                 id="presentmon-setup-modal-title"
-                className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate"
+                className="font-display text-base sm:text-lg font-semibold tracking-normal text-slate-900 dark:text-white truncate"
               >
                 {modalTitle}
               </h2>

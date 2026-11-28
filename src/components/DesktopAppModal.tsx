@@ -141,7 +141,7 @@ export function DesktopAppModal({
               <Monitor className="w-4.5 h-4.5" />
             </div>
             <div className="min-w-0">
-              <h2 className="font-display text-[15px] sm:text-[16px] font-bold text-slate-900 dark:text-white truncate">
+              <h2 className="font-display text-[15.5px] sm:text-[16px] font-semibold tracking-normal text-slate-900 dark:text-white truncate">
                 SecretArea Desktop App
               </h2>
               <p className="text-[11.5px] text-slate-500 dark:text-[#8b9bb4] font-mono-tabular truncate">
@@ -172,7 +172,7 @@ export function DesktopAppModal({
                   onClick={() => setSelectedTarget(opt.id)}
                   className={`px-2.5 py-1.5 rounded-[var(--sa-btn-radius)] text-[11.5px] font-semibold border transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                     active
-                      ? 'bg-[var(--sa-accent)] border-[var(--sa-secondary)] text-[var(--sa-accent-fg)] shadow-sm'
+                      ? 'bg-[var(--sa-btn-bg,var(--sa-accent))] border-[var(--sa-btn-border,var(--sa-secondary))] text-[var(--sa-btn-fg,var(--sa-accent-fg))] shadow-sm'
                       : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700 dark:bg-[#10151d] dark:hover:bg-white/[0.06] dark:border-white/[0.08] dark:text-[#9cb0c9]'
                   }`}
                 >

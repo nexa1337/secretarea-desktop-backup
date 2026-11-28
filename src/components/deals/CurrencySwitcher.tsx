@@ -158,7 +158,6 @@ export function CurrencySwitcher({
         >
           <span className="inline-flex items-center gap-2 min-w-0">
             <Globe
-              weight="duotone"
               className={`w-4 h-4 shrink-0 ${
                 isXbox
                   ? 'text-[#6ee755]'

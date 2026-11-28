@@ -269,7 +269,7 @@ export function BenchmarksAndDatabasePanel({
       <ExpandablePanel
         title={t.benchTitle}
         subtitle={t.benchSubtitle}
-        icon={<Gauge weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Gauge className="w-4.5 h-4.5" />}
       >
         <div className="space-y-4">
           <div className="rounded-lg bg-amber-50/80 dark:bg-amber-500/[0.08] border border-amber-200 dark:border-amber-400/25 px-3.5 py-2.5 flex items-start gap-2.5 text-[12px] text-amber-900 dark:text-amber-200">
@@ -354,7 +354,7 @@ export function BenchmarksAndDatabasePanel({
       <ExpandablePanel
         title={t.dbTitle}
         subtitle={`${t.dbVersionLabel}: ${dbState.dbVersion} · ${dbEntries.length} ${t.dbEntriesLabel}`}
-        icon={<Database weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Database className="w-4.5 h-4.5" />}
       >
         <div className="space-y-4">
           <div className="rounded-lg bg-slate-50 dark:bg-[#10151c] border border-slate-200/80 dark:border-white/[0.06] p-3.5 space-y-3">

@@ -152,7 +152,7 @@ export function NotificationCenterDrawer({
       }}
     >
       <aside
-        className={`w-full max-w-[430px] h-dvh flex flex-col border-s shadow-2xl overflow-hidden ${
+        className={`w-full max-w-[468px] h-dvh flex flex-col border-s shadow-2xl overflow-hidden ${
           isPs5Theme
             ? 'bg-[#031333] border-white/[0.16] text-white'
             : isXboxTheme
@@ -165,25 +165,27 @@ export function NotificationCenterDrawer({
           className={`px-4 sm:px-5 py-3.5 border-b shrink-0 ${
             isPs5Theme || isXboxTheme
               ? 'border-white/[0.08]'
-              : 'bg-slate-50/90 border-slate-200 dark:bg-[#11161e] dark:border-white/[0.07]'
+              : 'bg-slate-50/95 border-slate-200 dark:bg-[#11161e] dark:border-white/[0.07]'
           }`}
         >
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="sa-icon-badge w-9 h-9 shrink-0">
-                <Bell className="w-4.5 h-4.5" />
+              <div className="sa-icon-badge w-9 h-9">
+                <Bell className="w-[18px] h-[18px]" />
               </div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <h2 className="text-[15px] font-bold tracking-tight truncate">{t.title}</h2>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <h2 className="text-[15.5px] font-semibold tracking-normal leading-snug truncate">
+                    {t.title}
+                  </h2>
                   {unreadCount > 0 && (
-                    <span className="font-mono-tabular text-[11px] font-bold text-[var(--sa-accent)]">
+                    <span className="font-mono-tabular text-[12px] font-semibold text-[var(--sa-accent)] shrink-0">
                       ({unreadCount})
                     </span>
                   )}
                 </div>
                 <p
-                  className={`text-[11px] truncate ${
+                  className={`text-[11.5px] leading-snug truncate ${
                     isPs5Theme || isXboxTheme
                       ? 'text-[#9fb0c7]'
                       : 'text-slate-500 dark:text-[#8b9bb4]'
@@ -202,7 +204,7 @@ export function NotificationCenterDrawer({
                   disabled={isSyncing}
                   title={isSyncing ? t.syncingBtn : t.syncNowBtn}
                   aria-label={isSyncing ? t.syncingBtn : t.syncNowBtn}
-                  className={`p-1.5 rounded-[var(--sa-btn-radius)] border transition-colors cursor-pointer disabled:opacity-60 shrink-0 ${
+                  className={`w-8 h-8 inline-flex items-center justify-center rounded-[var(--sa-btn-radius)] border transition-colors cursor-pointer disabled:opacity-60 shrink-0 ${
                     isPs5Theme || isXboxTheme
                       ? 'bg-white/[0.06] hover:bg-white/[0.14] border-white/[0.12] text-white'
                       : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700 dark:bg-white/[0.05] dark:hover:bg-white/[0.11] dark:border-white/[0.1] dark:text-[#c7d5e8]'
@@ -218,7 +220,7 @@ export function NotificationCenterDrawer({
                 <button
                   type="button"
                   onClick={onMarkAllRead}
-                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-[var(--sa-btn-radius)] text-[11px] font-semibold border whitespace-nowrap transition-colors cursor-pointer ${
+                  className={`h-8 inline-flex items-center gap-1.5 px-2.5 rounded-[var(--sa-btn-radius)] text-[11.5px] font-medium border whitespace-nowrap transition-colors cursor-pointer shrink-0 ${
                     isPs5Theme || isXboxTheme
                       ? 'bg-white/[0.06] hover:bg-white/[0.14] border-white/[0.12] text-white'
                       : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700 dark:bg-white/[0.05] dark:hover:bg-white/[0.11] dark:border-white/[0.1] dark:text-[#c7d5e8]'
@@ -233,13 +235,13 @@ export function NotificationCenterDrawer({
                 type="button"
                 onClick={onClose}
                 aria-label="Close notifications"
-                className={`p-1.5 rounded-[var(--sa-btn-radius)] transition-colors cursor-pointer shrink-0 ${
+                className={`w-8 h-8 inline-flex items-center justify-center rounded-[var(--sa-btn-radius)] transition-colors cursor-pointer shrink-0 ${
                   isPs5Theme || isXboxTheme
                     ? 'text-[#9fb0c7] hover:text-white hover:bg-white/[0.08]'
                     : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200 dark:text-[#8b9bb4] dark:hover:text-white dark:hover:bg-white/[0.08]'
                 }`}
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -296,7 +298,7 @@ export function NotificationCenterDrawer({
                         ? 'bg-white/[0.05] hover:bg-white/[0.09]'
                         : isXboxTheme
                         ? 'bg-[#107C10]/12 hover:bg-[#107C10]/20'
-                        : 'bg-sky-50/55 hover:bg-sky-100/55 dark:bg-[#1a9fff]/[0.06] dark:hover:bg-[#1a9fff]/[0.11]'
+                        : 'bg-sky-50/70 hover:bg-sky-100/70 dark:bg-white/[0.04] dark:hover:bg-white/[0.08]'
                       : isPs5Theme || isXboxTheme
                       ? 'hover:bg-white/[0.04]'
                       : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]'
@@ -330,23 +332,23 @@ export function NotificationCenterDrawer({
 
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5 min-w-0 text-[11px] font-semibold">
+                      <div className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-semibold">
                         {isUnread && (
                           <span
                             aria-hidden="true"
                             className="w-2 h-2 rounded-full shrink-0 bg-[var(--sa-accent)]"
                           />
                         )}
-                        <span className="text-[var(--sa-accent)]">
+                        <span className="text-[var(--sa-accent)] truncate">
                           {tabDisplay}
                         </span>
                         {kindLabel && (
                           <span
-                            className={
+                            className={`shrink-0 ${
                               item.isLiveDiff
                                 ? 'text-emerald-700 dark:text-[#4ade80]'
                                 : 'text-slate-500 dark:text-[#8b9bb4]'
-                            }
+                            }`}
                           >
                             · {kindLabel}
                           </span>
@@ -354,16 +356,16 @@ export function NotificationCenterDrawer({
                       </div>
 
                       {formattedDate && (
-                        <span className="text-[10.5px] font-mono-tabular text-slate-400 dark:text-[#6f829c] shrink-0">
+                        <span className="text-[11px] tabular-nums text-slate-400 dark:text-[#7c8fa8] shrink-0">
                           {formattedDate}
                         </span>
                       )}
                     </div>
 
                     <div
-                      className={`text-[13.5px] leading-snug line-clamp-1 ${
+                      className={`text-[14px] leading-snug line-clamp-1 ${
                         isUnread
-                          ? 'font-bold text-slate-900 dark:text-white'
+                          ? 'font-semibold text-slate-900 dark:text-white'
                           : 'font-medium text-slate-700 dark:text-[#cbd5e1]'
                       }`}
                     >
@@ -372,7 +374,7 @@ export function NotificationCenterDrawer({
 
                     {(item.versionLabel || item.subtitle) && (
                       <div
-                        className={`text-[11.5px] truncate font-mono-tabular ${
+                        className={`text-[12px] truncate ${
                           isPs5Theme || isXboxTheme
                             ? 'text-[#9fb0c7]'
                             : 'text-slate-500 dark:text-[#8b9bb4]'

@@ -259,7 +259,7 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
                 {t.ossTitle}
               </h2>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/12 border border-emerald-500/30 text-emerald-700 dark:text-[#34d399]">
-                <ShieldCheck weight="duotone" className="w-3.5 h-3.5" />
+                <ShieldCheck className="w-3.5 h-3.5" />
                 <span>{t.ossPolicyBadge}</span>
               </span>
             </div>
@@ -270,20 +270,20 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
         </div>
 
         <div className="rounded-lg bg-slate-50 dark:bg-[#11161d] border border-slate-200/80 dark:border-white/[0.07] px-3.5 py-2.5 text-[12px] text-slate-600 dark:text-[#9cb0c9] flex items-start gap-2.5">
-          <Info weight="duotone" className="w-4 h-4 text-[var(--sa-accent)] shrink-0 mt-0.5" />
+          <Info className="w-4 h-4 text-[var(--sa-accent)] shrink-0 mt-0.5" />
           <span className="text-start">{t.ossPolicyDesc}</span>
         </div>
 
         {!hasDesktopBridge && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-400/30 px-3.5 py-2.5 text-[12px] text-amber-800 dark:text-amber-200 flex items-start gap-2.5">
-            <WarningCircle weight="duotone" className="w-4 h-4 shrink-0 mt-0.5" />
+            <WarningCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span className="text-start">{t.ossWebPreviewNote}</span>
           </div>
         )}
 
         {hasDesktopBridge && !managerState.platformSupported && (
           <div className="rounded-lg bg-[var(--sa-accent-soft)] border border-[var(--sa-accent-ring)] px-3.5 py-2.5 text-[12px] text-slate-800 dark:text-[#e2eaf4] flex items-start gap-2.5">
-            <Info weight="duotone" className="w-4 h-4 text-[var(--sa-accent)] shrink-0 mt-0.5" />
+            <Info className="w-4 h-4 text-[var(--sa-accent)] shrink-0 mt-0.5" />
             <span className="text-start">{t.ossPlatformUnsupportedNote}</span>
           </div>
         )}
@@ -333,12 +333,12 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
                         onClick={() => handleOpenLink(tool, 'license')}
                         className="sa-badge-secondary inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold hover:opacity-90 transition-opacity cursor-pointer"
                       >
-                        <ShieldCheck weight="duotone" className="w-3.5 h-3.5" />
+                        <ShieldCheck className="w-3.5 h-3.5" />
                         <span>{tool.licenseId}</span>
                       </button>
                       {tool.supportsDirectLibrary && !tool.requiresStandaloneGui && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-slate-200 dark:border-white/[0.1] bg-slate-100 dark:bg-white/[0.05] text-slate-700 dark:text-[#cbd5e1] text-[11px] font-medium">
-                          <Package weight="duotone" className="w-3.5 h-3.5" />
+                          <Package className="w-3.5 h-3.5" />
                           <span>{t.ossDirectLibBadge}</span>
                         </span>
                       )}
@@ -466,7 +466,7 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
               {confirmingThis && (
                 <div className="rounded-xl border border-[var(--sa-accent-ring)] bg-[var(--sa-accent-soft)] p-3.5 space-y-2.5">
                   <div className="flex items-start gap-2.5">
-                    <ShieldCheck weight="duotone" className="w-5 h-5 text-[var(--sa-accent)] shrink-0 mt-0.5" />
+                    <ShieldCheck className="w-5 h-5 text-[var(--sa-accent)] shrink-0 mt-0.5" />
                     <div className="space-y-1 min-w-0">
                       <h4 className="text-[13px] font-bold text-slate-900 dark:text-white">
                         {t.ossConfirmDownloadTitle}
@@ -588,7 +588,7 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
               {/* Error Banner */}
               {(tool.error || tool.healthIssue) && (
                 <div className="rounded-lg bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-400/30 px-3.5 py-2.5 text-[12px] text-rose-700 dark:text-rose-300 flex items-start gap-2">
-                  <WarningCircle weight="duotone" className="w-4 h-4 shrink-0 mt-0.5" />
+                  <WarningCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span className="text-start">{tool.error || tool.healthIssue}</span>
                 </div>
               )}
@@ -634,7 +634,7 @@ export function OpenSourceToolsPanel({ isDesktopApp, t }: OpenSourceToolsPanelPr
           className="w-full flex items-center justify-between gap-3 text-start cursor-pointer"
         >
           <div className="flex items-center gap-2 min-w-0">
-            <ShieldCheck weight="duotone" className="w-4.5 h-4.5 text-[var(--sa-accent)] shrink-0" />
+            <ShieldCheck className="w-4.5 h-4.5 text-[var(--sa-accent)] shrink-0" />
             <span className="text-[13px] font-bold text-slate-900 dark:text-white truncate">
               {t.ossThirdPartyTitle}
             </span>

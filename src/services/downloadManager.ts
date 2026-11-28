@@ -4,6 +4,7 @@ import type {
   DownloadTask,
   GameItem,
   MirrorLink,
+  QbitLifecyclePreferences,
   SheetTabKey,
   TorrentConnectionTestResult,
   TorrentDetectionResult,
@@ -40,6 +41,13 @@ export interface SecretAreaDownloadsBridge {
   testTorrentConnection: (
     cfg?: Partial<TorrentIntegrationConfig>
   ) => Promise<TorrentConnectionTestResult | null>;
+  reconnectTorrent: () => Promise<DownloadManagerSnapshot | null>;
+  startQbitBackground: () => Promise<DownloadManagerSnapshot | null>;
+  quitQbit: () => Promise<{ ok: boolean; processRunning?: boolean; snapshot?: DownloadManagerSnapshot } | null>;
+  applyDetectedPort: (port: number) => Promise<DownloadManagerSnapshot | null>;
+  saveQbitLifecyclePrefs: (
+    prefs: Partial<QbitLifecyclePreferences>
+  ) => Promise<DownloadManagerSnapshot | null>;
   onUpdated: (callback: (snapshot: DownloadManagerSnapshot) => void) => () => void;
 }
 
@@ -71,6 +79,13 @@ export const DEFAULT_TORRENT_CONFIG: TorrentIntegrationConfig = {
   pollIntervalMs: 1500,
 };
 
+export const DEFAULT_QBIT_LIFECYCLE_PREFS: QbitLifecyclePreferences = {
+  autoStartQbit: true,
+  keepQbitRunningOnClose: true,
+  launchQbitMinimized: true,
+  autoReconnect: true,
+};
+
 export const EMPTY_DOWNLOAD_SNAPSHOT: DownloadManagerSnapshot = {
   tasks: [],
   downloadFolder: '',
@@ -80,6 +95,22 @@ export const EMPTY_DOWNLOAD_SNAPSHOT: DownloadManagerSnapshot = {
   torrentVersion: null,
   torrentWebApiVersion: null,
   torrentError: null,
+  torrentConnectionState: 'idle',
+  torrentConnectionDetail: {
+    reasonCode: 'disabled',
+    hint: null,
+    processRunning: false,
+    processName: null,
+    managedByApp: false,
+    webUiEnabledInConfig: null,
+    detectedConfigPort: null,
+    detectedOpenPorts: [],
+    httpsEnabledInConfig: false,
+    attempt: 0,
+    maxAttempts: 0,
+    lastConnectedAt: null,
+  },
+  qbitLifecyclePrefs: DEFAULT_QBIT_LIFECYCLE_PREFS,
 };
 
 const WEB_DOWNLOADS_STORAGE_KEY = 'secretarea_web_downloads_v1';
@@ -229,6 +260,22 @@ export function loadWebFallbackSnapshot(): DownloadManagerSnapshot {
     torrentVersion: null,
     torrentWebApiVersion: null,
     torrentError: null,
+    torrentConnectionState: 'idle',
+    torrentConnectionDetail: {
+      reasonCode: 'web_preview',
+      hint: null,
+      processRunning: false,
+      processName: null,
+      managedByApp: false,
+      webUiEnabledInConfig: null,
+      detectedConfigPort: null,
+      detectedOpenPorts: [],
+      httpsEnabledInConfig: false,
+      attempt: 0,
+      maxAttempts: 0,
+      lastConnectedAt: null,
+    },
+    qbitLifecyclePrefs: DEFAULT_QBIT_LIFECYCLE_PREFS,
   };
 }
 

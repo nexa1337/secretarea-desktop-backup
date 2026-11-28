@@ -1074,13 +1074,13 @@ export function GameDetailModal({
                             block: 'start',
                           })
                         }
-                        className="sa-btn-primary group relative overflow-hidden inline-flex items-center gap-2 px-5 py-3 sm:px-6 sm:py-3.5 text-[13px] sm:text-[14px] font-semibold whitespace-nowrap cursor-pointer"
+                        className="sa-btn-primary group relative overflow-hidden inline-flex items-center gap-2 px-5 py-2.5 sm:px-6 sm:py-3 text-[13.5px] sm:text-[14px] font-semibold whitespace-nowrap cursor-pointer"
                       >
                         <span
                           aria-hidden="true"
                           className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/25 to-transparent"
                         />
-                        <DownloadSimple className="w-4 h-4 relative z-10 shrink-0" />
+                        <DownloadSimple className="w-[17px] h-[17px] relative z-10 shrink-0" />
                         <span className="relative z-10">{t.downloadChannels}</span>
                       </button>
 
@@ -1088,7 +1088,7 @@ export function GameDetailModal({
                         <button
                           type="button"
                           onClick={handleWatchTrailer}
-                          className="inline-flex items-center gap-2 px-4 sm:px-5 py-3 sm:py-3.5 rounded-[var(--sa-btn-radius)] bg-white/[0.11] hover:bg-white/[0.2] backdrop-blur-md border border-white/[0.2] text-white text-[13px] sm:text-[14px] font-medium hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sa-accent)]"
+                          className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-[var(--sa-btn-radius)] bg-white/[0.11] hover:bg-white/[0.2] backdrop-blur-md border border-white/[0.2] text-white text-[13.5px] sm:text-[14px] font-semibold hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--sa-accent)]"
                         >
                           <Play weight="fill" className="w-4 h-4 text-[var(--sa-accent)] fill-current shrink-0" />
                           <span>{t.watchTrailer}</span>
@@ -1104,7 +1104,7 @@ export function GameDetailModal({
                               block: 'start',
                             })
                           }
-                          className="inline-flex items-center gap-2 px-4 py-3 sm:py-3.5 rounded-[var(--sa-btn-radius)] bg-white/[0.06] hover:bg-white/[0.14] backdrop-blur-md border border-white/[0.14] text-[#dce8f5] hover:text-white text-[13px] sm:text-[14px] font-medium hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                          className="inline-flex items-center gap-2 px-4 py-2.5 sm:py-3 rounded-[var(--sa-btn-radius)] bg-white/[0.06] hover:bg-white/[0.14] backdrop-blur-md border border-white/[0.14] text-[#dce8f5] hover:text-white text-[13.5px] sm:text-[14px] font-semibold hover:-translate-y-0.5 transition-all duration-200 whitespace-nowrap cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
                         >
                           <Cpu className="w-4 h-4 shrink-0" />
                           <span>{canRunEvaluation ? t.canRunItTitle : t.requirementsOnly}</span>

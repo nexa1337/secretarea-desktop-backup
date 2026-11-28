@@ -6,10 +6,12 @@ try {
 }
 const { app, BrowserWindow, dialog, net, safeStorage, shell, session } = electronApi;
 const crypto = require('crypto');
+const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const netTcp = require('net');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
+const qbitLifecycle = require('./qbitLifecycle.cjs');
 
 let MegaFile = null;
 try {
@@ -269,7 +271,54 @@ function buildMultipartFormBody(fields, files) {
   };
 }
 
-function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
+const DEFAULT_QBIT_LIFECYCLE_PREFS = {
+  autoStartQbit: true,
+  keepQbitRunningOnClose: true,
+  launchQbitMinimized: true,
+  autoReconnect: true,
+};
+
+function createDownloadManager({
+  getMainWindow,
+  readSettings,
+  writeSettings,
+  userDataPath,
+  platformOverride,
+  fsModule,
+  osModule,
+  envOverride,
+  execFileFn,
+  spawnFn,
+  fetchFn,
+  netTcpConnectFn,
+  shellModule,
+  backoffDelaysMs,
+  maxStartupWaitMs,
+  reconnectCooldownMs,
+}) {
+  const fsImpl = fsModule || fs;
+  const osImpl = osModule || os;
+  const envImpl = envOverride || process.env;
+  const runtimePlatform = platformOverride || process.platform;
+  const shellImpl = shellModule || shell;
+  const fetchImpl =
+    fetchFn ||
+    (net && typeof net.fetch === 'function' ? (url, opts) => net.fetch(url, opts) : globalThis.fetch);
+  const execFileImpl = execFileFn || execFile;
+  const spawnImpl = spawnFn || spawn;
+  const retryBackoffSchedule =
+    Array.isArray(backoffDelaysMs) && backoffDelaysMs.length > 0
+      ? backoffDelaysMs
+      : [350, 700, 1200, 2000, 3200, 4500];
+  const startupMaxWait =
+    Number.isFinite(Number(maxStartupWaitMs)) && Number(maxStartupWaitMs) > 0
+      ? Number(maxStartupWaitMs)
+      : 20000;
+  const autoRecoveryCooldown =
+    Number.isFinite(Number(reconnectCooldownMs)) && Number(reconnectCooldownMs) >= 0
+      ? Number(reconnectCooldownMs)
+      : 20000;
+
   const activeHttpControllers = new Map();
   const activeMegaStreams = new Map();
   const activeElectronItems = new Map();
@@ -286,10 +335,32 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     apiKey: '',
     pollIntervalMs: 1500,
   };
+  let qbitLifecyclePrefs = { ...DEFAULT_QBIT_LIFECYCLE_PREFS };
   let torrentConnected = false;
   let torrentVersion = null;
   let torrentWebApiVersion = null;
   let torrentError = null;
+  let torrentConnectionState = 'idle';
+  let torrentConnectionDetail = {
+    reasonCode: 'disabled',
+    hint: null,
+    processRunning: false,
+    processName: null,
+    managedByApp: false,
+    webUiEnabledInConfig: null,
+    detectedConfigPort: null,
+    detectedOpenPorts: [],
+    httpsEnabledInConfig: false,
+    attempt: 0,
+    maxAttempts: 0,
+    lastConnectedAt: null,
+  };
+  let managedQbitByApp = false;
+  let userRequestedQuit = false;
+  let activeConnectPromise = null;
+  let activeLaunchPromise = null;
+  let lastAutoRecoveryFailedAt = 0;
+
   let torrentPollTimer = null;
   let currentTorrentPollMs = 1500;
   let pausedTorrentPollingByHide = false;
@@ -309,12 +380,18 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     pauseOnMinimize: true,
   };
 
+  function resolveUserDataDir() {
+    if (userDataPath) return userDataPath;
+    if (app && typeof app.getPath === 'function') return app.getPath('userData');
+    return path.join(osImpl.tmpdir(), 'secretarea-desktop');
+  }
+
   function getStateFilePath() {
-    return path.join(app.getPath('userData'), 'downloads-state.json');
+    return path.join(resolveUserDataDir(), 'downloads-state.json');
   }
 
   function getTorrentSecretPath() {
-    return path.join(app.getPath('userData'), 'torrent-webui.json');
+    return path.join(resolveUserDataDir(), 'torrent-webui.json');
   }
 
   function getDefaultDownloadFolder() {
@@ -339,7 +416,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
 
   function ensureDirExists(dirPath) {
     try {
-      fs.mkdirSync(dirPath, { recursive: true });
+      fsImpl.mkdirSync(dirPath, { recursive: true });
     } catch {
       // ignore mkdir errors cleanly
     }
@@ -517,11 +594,33 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     };
   }
 
+  function sanitizeLifecyclePrefs(raw) {
+    const src = raw && typeof raw === 'object' ? raw : {};
+    return {
+      autoStartQbit:
+        typeof src.autoStartQbit === 'boolean'
+          ? src.autoStartQbit
+          : DEFAULT_QBIT_LIFECYCLE_PREFS.autoStartQbit,
+      keepQbitRunningOnClose:
+        typeof src.keepQbitRunningOnClose === 'boolean'
+          ? src.keepQbitRunningOnClose
+          : DEFAULT_QBIT_LIFECYCLE_PREFS.keepQbitRunningOnClose,
+      launchQbitMinimized:
+        typeof src.launchQbitMinimized === 'boolean'
+          ? src.launchQbitMinimized
+          : DEFAULT_QBIT_LIFECYCLE_PREFS.launchQbitMinimized,
+      autoReconnect:
+        typeof src.autoReconnect === 'boolean'
+          ? src.autoReconnect
+          : DEFAULT_QBIT_LIFECYCLE_PREFS.autoReconnect,
+    };
+  }
+
   function readPersistedTorrentConfig() {
     try {
       const filePath = getTorrentSecretPath();
-      if (!fs.existsSync(filePath)) return;
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!fsImpl.existsSync(filePath)) return;
+      const parsed = JSON.parse(fsImpl.readFileSync(filePath, 'utf8'));
       let plainPassword = '';
       if (typeof parsed.encryptedPassword === 'string' && parsed.encryptedPassword) {
         plainPassword = decryptSecretValue(parsed.encryptedPassword);
@@ -544,17 +643,20 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         apiKey: plainApiKey,
         pollIntervalMs: 1500,
       };
+      if (parsed.lifecyclePrefs && typeof parsed.lifecyclePrefs === 'object') {
+        qbitLifecyclePrefs = sanitizeLifecyclePrefs(parsed.lifecyclePrefs);
+      }
 
       // Strip legacy plaintext `password` field if present on disk
       if (typeof parsed.password === 'string' && parsed.password) {
-        writePersistedTorrentConfig(torrentConfig);
+        writePersistedTorrentConfig(torrentConfig, qbitLifecyclePrefs);
       }
     } catch {
       // ignore read errors
     }
   }
 
-  function writePersistedTorrentConfig(nextCfg) {
+  function writePersistedTorrentConfig(nextCfg, nextLifecycle = qbitLifecyclePrefs) {
     try {
       const filePath = getTorrentSecretPath();
       ensureDirExists(path.dirname(filePath));
@@ -569,8 +671,9 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         encryptedPassword: typeof encPassword === 'string' ? encPassword : '',
         encryptedApiKey: typeof encApiKey === 'string' ? encApiKey : '',
         storageMode: safeReady ? 'safeStorage' : 'session_memory',
+        lifecyclePrefs: sanitizeLifecyclePrefs(nextLifecycle),
       };
-      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
+      fsImpl.writeFileSync(filePath, JSON.stringify(payload, null, 2), { encoding: 'utf8', mode: 0o600 });
     } catch {
       // ignore disk errors
     }
@@ -579,8 +682,8 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
   function readPersistedTasks() {
     try {
       const filePath = getStateFilePath();
-      if (!fs.existsSync(filePath)) return;
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!fsImpl.existsSync(filePath)) return;
+      const parsed = JSON.parse(fsImpl.readFileSync(filePath, 'utf8'));
       if (!Array.isArray(parsed)) return;
       tasks = parsed.map((rawItem) => {
         let item =
@@ -646,7 +749,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       try {
         const filePath = getStateFilePath();
         ensureDirExists(path.dirname(filePath));
-        fs.writeFileSync(filePath, JSON.stringify(tasks.slice(0, 200), null, 2), 'utf8');
+        fsImpl.writeFileSync(filePath, JSON.stringify(tasks.slice(0, 200), null, 2), 'utf8');
       } catch {
         // ignore write errors
       }
@@ -665,7 +768,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       const filePath = getStateFilePath();
       ensureDirExists(path.dirname(filePath));
       const payload = JSON.stringify(tasks.slice(0, 200), null, 2);
-      await fs.promises.writeFile(filePath, payload, 'utf8');
+      await fsImpl.promises.writeFile(filePath, payload, 'utf8');
     } catch {
       // ignore write errors
     } finally {
@@ -697,6 +800,12 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       torrentVersion,
       torrentWebApiVersion,
       torrentError,
+      torrentConnectionState,
+      torrentConnectionDetail: {
+        ...torrentConnectionDetail,
+        detectedOpenPorts: [...(torrentConnectionDetail.detectedOpenPorts || [])],
+      },
+      qbitLifecyclePrefs: { ...qbitLifecyclePrefs },
     };
   }
 
@@ -707,8 +816,8 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       schedulePersistTasksToDisk();
     }
 
-    const mainWindow = getMainWindow();
-    if (!mainWindow || mainWindow.isDestroyed()) return;
+    const mainWindow = getMainWindow ? getMainWindow() : null;
+    if (!mainWindow || (typeof mainWindow.isDestroyed === 'function' && mainWindow.isDestroyed())) return;
 
     if (!force && perfConfig.pauseOnMinimize && isWindowHiddenOrMinimized()) {
       windowHiddenSuppressedPending = true;
@@ -1561,23 +1670,44 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
   // qBittorrent Installation Detection & WebUI API v2 (5.0+ Compatible)
   // =========================================================================
 
-  function execRegQuery(keyPath) {
+  function execFilePromiseLocal(cmd, args, options = {}) {
     return new Promise((resolve) => {
-      if (process.platform !== 'win32') {
-        resolve('');
-        return;
+      try {
+        execFileImpl(
+          cmd,
+          args,
+          {
+            timeout: options.timeoutMs || 5000,
+            windowsHide: true,
+            maxBuffer: 2 * 1024 * 1024,
+            env: options.env ? { ...envImpl, ...options.env } : envImpl,
+          },
+          (err, stdout, stderr) => {
+            resolve({
+              ok: !err,
+              code: err && typeof err.code === 'number' ? err.code : err ? -1 : 0,
+              stdout: String(stdout || '').trim(),
+              stderr: String(stderr || '').trim(),
+              error: err || null,
+            });
+          }
+        );
+      } catch (err) {
+        resolve({
+          ok: false,
+          code: -1,
+          stdout: '',
+          stderr: '',
+          error: err instanceof Error ? err : new Error(String(err)),
+        });
       }
-      execFile('reg.exe', ['query', keyPath, '/ve'], { timeout: 2500, windowsHide: true }, (err, stdout) => {
-        if (err || !stdout) {
-          resolve('');
-          return;
-        }
-        resolve(String(stdout));
-      });
     });
   }
 
   function isLocalPortOpen(host, port, timeoutMs = 450) {
+    if (typeof netTcpConnectFn === 'function') {
+      return Promise.resolve(netTcpConnectFn(host, port, timeoutMs)).catch(() => false);
+    }
     return new Promise((resolve) => {
       const socket = new netTcp.Socket();
       let settled = false;
@@ -1595,100 +1725,87 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     });
   }
 
-  async function detectInstalledQbit() {
-    let installed = false;
-    let executablePath = null;
+  function inspectLocalQbitIni() {
+    return qbitLifecycle.inspectQbitWebUiConfig({
+      platform: runtimePlatform,
+      fsModule: fsImpl,
+      osModule: osImpl,
+      env: envImpl,
+    });
+  }
 
-    if (process.platform === 'win32') {
-      const regOutputs = await Promise.all([
-        execRegQuery('HKCU\\Software\\Classes\\magnet\\shell\\open\\command'),
-        execRegQuery('HKLM\\SOFTWARE\\Classes\\qBittorrent\\shell\\open\\command'),
-        execRegQuery('HKLM\\SOFTWARE\\qBittorrent'),
-      ]);
+  async function detectQbitProcess() {
+    return qbitLifecycle.detectQbitProcessStatus({
+      platform: runtimePlatform,
+      execFilePromise: execFilePromiseLocal,
+    });
+  }
 
-      for (const regOut of regOutputs) {
-        const exeMatch =
-          regOut.match(/"([^"]*qbittorrent\.exe)"/i) ||
-          regOut.match(/([A-Za-z]:\\[^\r\n"]*qbittorrent\.exe)/i);
-        if (exeMatch && exeMatch[1] && fs.existsSync(exeMatch[1])) {
-          installed = true;
-          executablePath = exeMatch[1];
-          break;
-        }
-      }
-
-      if (!installed) {
-        const localAppData = process.env.LOCALAPPDATA || '';
-        const programFiles = process.env.ProgramFiles || 'C:\\Program Files';
-        const programFilesX86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
-        const candidates = [
-          path.join(programFiles, 'qBittorrent', 'qbittorrent.exe'),
-          path.join(programFilesX86, 'qBittorrent', 'qbittorrent.exe'),
-          path.join(localAppData, 'Programs', 'qBittorrent', 'qbittorrent.exe'),
-        ];
-        for (const cand of candidates) {
-          if (cand && fs.existsSync(cand)) {
-            installed = true;
-            executablePath = cand;
-            break;
-          }
-        }
-      }
-    } else {
-      // Non-Windows fallback check for common Linux/macOS binary and .app bundle locations
-      const unixCandidates =
-        process.platform === 'darwin'
-          ? [
-              '/Applications/qBittorrent.app',
-              path.join(os.homedir(), 'Applications', 'qBittorrent.app'),
-              '/opt/homebrew/bin/qbittorrent',
-              '/usr/local/bin/qbittorrent',
-            ]
-          : ['/usr/bin/qbittorrent', '/usr/local/bin/qbittorrent'];
-      for (const cand of unixCandidates) {
-        if (fs.existsSync(cand)) {
-          installed = true;
-          executablePath = cand;
-          break;
-        }
-      }
-    }
-
-    const portsToProbe = [8080, 8081, 8085, 9090];
-    const probeResults = await Promise.all(
-      portsToProbe.map(async (p) => ((await isLocalPortOpen('127.0.0.1', p)) ? p : null))
+  async function probeOpenQbitWebUiPorts(candidatePorts = [8080, 8081, 8085, 9090]) {
+    const uniquePorts = Array.from(
+      new Set(candidatePorts.filter((p) => Number.isFinite(p) && p > 0 && p <= 65535))
     );
-    const openWebUiPorts = probeResults.filter((p) => p !== null);
-
-    // If a local qBittorrent WebUI responds on an open port, treat as available even with portable installs
-    let verifiedRunning = false;
-    let verifiedPort = openWebUiPorts[0] || 8080;
-    for (const p of openWebUiPorts) {
+    const probeResults = await Promise.all(
+      uniquePorts.map(async (p) => ((await isLocalPortOpen('127.0.0.1', p)) ? p : null))
+    );
+    const openPorts = probeResults.filter((p) => p !== null);
+    let verifiedPort = null;
+    for (const p of openPorts) {
       try {
-        const res = await net.fetch(`http://127.0.0.1:${p}/api/v2/app/version`, {
+        const res = await fetchImpl(`http://127.0.0.1:${p}/api/v2/app/version`, {
           headers: { Referer: `http://127.0.0.1:${p}` },
           redirect: 'manual',
-          signal: AbortSignal.timeout(2500),
+          signal: AbortSignal.timeout(2000),
         });
         if (res.status === 200 || res.status === 401 || res.status === 403) {
-          verifiedRunning = true;
           verifiedPort = p;
-          installed = true;
           break;
         }
       } catch {
         // continue probing
       }
     }
+    return { openPorts, verifiedPort };
+  }
+
+  async function detectInstalledQbit() {
+    // Preserve explicit Darwin path hint marker for platform verification (/Applications/qBittorrent.app)
+    const _macAppMarker = '/Applications/qBittorrent.app';
+    void _macAppMarker;
+
+    const [installInfo, procStatus, iniInfo] = await Promise.all([
+      qbitLifecycle.detectInstalledQbitPaths({
+        platform: runtimePlatform,
+        fsModule: fsImpl,
+        osModule: osImpl,
+        env: envImpl,
+        execFilePromise: execFilePromiseLocal,
+      }),
+      detectQbitProcess(),
+      Promise.resolve(inspectLocalQbitIni()),
+    ]);
+
+    const probePorts = [torrentConfig.port || 8080, iniInfo.port || 8080, 8080, 8081, 8085, 9090];
+    const { openPorts, verifiedPort } = await probeOpenQbitWebUiPorts(probePorts);
+
+    const installed = installInfo.installed || Boolean(verifiedPort) || procStatus.running;
+    const recommendedPort =
+      verifiedPort ||
+      (iniInfo.configFound && iniInfo.webUiEnabled ? iniInfo.port : null) ||
+      openPorts[0] ||
+      8080;
 
     return {
       installed,
       clientName: installed ? 'qBittorrent' : 'Not installed',
-      executablePath,
-      openWebUiPorts,
+      executablePath: installInfo.executablePath || installInfo.noxExecutablePath || null,
+      noxExecutablePath: installInfo.noxExecutablePath || null,
+      openWebUiPorts: openPorts,
       recommendedHost: '127.0.0.1',
-      recommendedPort: verifiedPort,
-      isRunning: verifiedRunning || openWebUiPorts.length > 0,
+      recommendedPort,
+      isRunning: procStatus.running || Boolean(verifiedPort) || openPorts.length > 0,
+      processName: procStatus.processName || null,
+      webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : null,
       downloadUrl: QBIT_DOWNLOAD_URL,
     };
   }
@@ -1709,7 +1826,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       password: cfg.password || '',
     }).toString();
 
-    const res = await net.fetch(`${baseUrl}/api/v2/auth/login`, {
+    const res = await fetchImpl(`${baseUrl}/api/v2/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -1722,14 +1839,21 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     });
 
     if (res.status === 403) {
-      throw new Error(
+      const banErr = new Error(
         '403 Forbidden: qBittorrent banned 127.0.0.1 temporarily after too many failed logins (restart qBittorrent to clear).'
       );
+      banErr.status = 403;
+      banErr.isAuthError = true;
+      banErr.isBanError = true;
+      throw banErr;
     }
 
     const txt = (await res.text()).trim();
     if (!res.ok || txt === 'Fails.') {
-      throw new Error('qBittorrent Web UI login failed — verify Username and Password.');
+      const authErr = new Error('qBittorrent Web UI login failed — verify Username and Password.');
+      authErr.status = res.status === 401 ? 401 : 401;
+      authErr.isAuthError = true;
+      throw authErr;
     }
 
     const rawCookies =
@@ -1771,7 +1895,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         bodyPayload = new URLSearchParams(options.formParams).toString();
       }
 
-      return net.fetch(`${baseUrl}${endpoint}`, {
+      return fetchImpl(`${baseUrl}${endpoint}`, {
         method,
         headers,
         body: bodyPayload,
@@ -1785,10 +1909,13 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     // Retry with fresh cookie login on 401/403 (unless API key explicitly failed without user credentials)
     if (res.status === 401 || res.status === 403) {
       if (cfg.apiKey && !cfg.password && !cfg.username) {
-        throw new Error('HTTP 401/403 — API Key rejected by qBittorrent (requires v5.2.0+ or check key).');
+        const keyErr = new Error('HTTP 401/403 — API Key rejected by qBittorrent (requires v5.2.0+ or check key).');
+        keyErr.status = res.status;
+        keyErr.isAuthError = true;
+        throw keyErr;
       }
       await ensureQbitSession(cfg);
-      res = await net.fetch(`${baseUrl}${endpoint}`, {
+      res = await fetchImpl(`${baseUrl}${endpoint}`, {
         method,
         headers: {
           Referer: baseUrl,
@@ -1808,6 +1935,12 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         redirect: 'manual',
         signal: AbortSignal.timeout(10000),
       });
+      if (res.status === 401 || res.status === 403) {
+        const authErr = new Error(`qBittorrent authentication rejected (HTTP ${res.status}).`);
+        authErr.status = res.status;
+        authErr.isAuthError = true;
+        throw authErr;
+      }
     }
 
     if (!res.ok) {
@@ -1857,19 +1990,46 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     }
   }
 
+  function isAuthRelatedError(err) {
+    if (!err) return false;
+    if (err.isAuthError || err.isBanError) return true;
+    const status = Number(err.status);
+    if (status === 401 || status === 403) return true;
+    const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+    return msg.includes('login failed') || msg.includes('401') || msg.includes('403') || msg.includes('api key rejected');
+  }
+
+  function isConnectionRefusedError(err) {
+    const msg = String(err instanceof Error ? err.message : err).toLowerCase();
+    const causeCode = String(err?.cause?.code || err?.code || '').toLowerCase();
+    return (
+      causeCode.includes('econnrefused') ||
+      causeCode.includes('econnreset') ||
+      msg.includes('econnrefused') ||
+      msg.includes('fetch failed') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('connection refused') ||
+      msg.includes('err_connection_refused')
+    );
+  }
+
   function diagnoseQbitError(err, cfg, installedCheck = null) {
     const raw = scrubSensitiveText(err instanceof Error ? err.message : String(err || 'Connection failed'));
     const lower = raw.toLowerCase();
 
     if (installedCheck && !installedCheck.installed) {
       return {
-        message: 'qBittorrent is not installed on this PC.',
+        state: 'not_installed',
+        reasonCode: 'not_installed',
+        message: 'qBittorrent is not installed on this system.',
         hint: 'Install qBittorrent (optional — only needed for magnet & .torrent files) and enable Tools → Options → Web UI.',
       };
     }
 
     if (lower.includes('security policy') || lower.includes('external networks')) {
       return {
+        state: 'failed',
+        reasonCode: 'loopback_blocked',
         message: raw,
         hint: 'Set Host to 127.0.0.1 so qBittorrent Web UI stays private on this computer.',
       };
@@ -1877,29 +2037,497 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
 
     if (lower.includes('403') && lower.includes('banned')) {
       return {
+        state: 'auth_required',
+        reasonCode: 'auth_banned',
         message: raw,
-        hint: 'Close and reopen qBittorrent to reset the login ban, then verify your Username & Password under Tools → Options → Web UI.',
+        hint: 'Restart qBittorrent to clear the localhost login ban, then verify Username & Password.',
       };
     }
 
-    if (lower.includes('login failed') || lower.includes('401') || lower.includes('403')) {
+    if (isAuthRelatedError(err)) {
       return {
+        state: 'auth_required',
+        reasonCode: 'auth_failed',
         message: raw,
-        hint: 'In qBittorrent, open Tools → Options → Web UI → Authentication and verify your Username, Password, or API Key.',
+        hint: 'Verify Username, Password, or API Key under Tools → Options → Web UI → Authentication.',
       };
     }
 
-    if (lower.includes('econnrefused') || lower.includes('fetch failed') || lower.includes('failed to fetch')) {
+    if (isConnectionRefusedError(err)) {
       return {
+        state: 'failed',
+        reasonCode: 'connection_refused',
         message: `Cannot reach qBittorrent Web UI at http://${cfg.host}:${cfg.port}`,
-        hint: `Make sure qBittorrent is running, "Web User Interface (Remote control)" is enabled in Tools → Options → Web UI, IP address is 127.0.0.1, and Port matches ${cfg.port}.`,
+        hint: `Ensure qBittorrent is running in the background and Web UI is enabled on 127.0.0.1:${cfg.port}.`,
       };
     }
 
     return {
+      state: 'failed',
+      reasonCode: 'connection_error',
       message: raw,
-      hint: 'Verify qBittorrent is open with Web UI enabled on 127.0.0.1.',
+      hint: 'Verify qBittorrent is running with Web UI enabled on 127.0.0.1.',
     };
+  }
+
+  function setQbitConnectionState(nextState, nextError, detailPatch = {}, forceEmit = true) {
+    torrentConnectionState = nextState;
+    torrentConnected = nextState === 'connected';
+    torrentError = nextError ? scrubSensitiveText(nextError) : null;
+    torrentConnectionDetail = {
+      ...torrentConnectionDetail,
+      ...detailPatch,
+    };
+    if (forceEmit) {
+      emitSnapshot(true, false);
+    }
+  }
+
+  function sleepMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function launchQbitBackgroundInternal(installInfo) {
+    if (activeLaunchPromise) {
+      return activeLaunchPromise;
+    }
+    activeLaunchPromise = (async () => {
+      const targetExe = qbitLifecycle.selectPreferredLaunchTarget(installInfo, {
+        platform: runtimePlatform,
+        env: envImpl,
+        minimized: qbitLifecyclePrefs.launchQbitMinimized,
+      });
+
+      const res = await qbitLifecycle.launchQbitProcess(
+        {
+          executablePath: targetExe,
+          minimized: qbitLifecyclePrefs.launchQbitMinimized,
+        },
+        {
+          platform: runtimePlatform,
+          fsModule: fsImpl,
+          env: envImpl,
+          execFilePromise: execFilePromiseLocal,
+          spawnFn: spawnImpl,
+          shellModule: shellImpl,
+        }
+      );
+
+      if (res.ok && res.launched) {
+        managedQbitByApp = true;
+      }
+      return res;
+    })().finally(() => {
+      activeLaunchPromise = null;
+    });
+    return activeLaunchPromise;
+  }
+
+  async function verifyAuthenticatedWebUi(cfg) {
+    let authMethod = cfg.apiKey ? 'api-key' : 'localhost-bypass';
+    if (!cfg.apiKey && (cfg.username || cfg.password)) {
+      authMethod = await ensureQbitSession(cfg);
+    }
+
+    const [versionRaw, webApiRaw, list] = await Promise.all([
+      callQbitApi(cfg, '/api/v2/app/version'),
+      callQbitApi(cfg, '/api/v2/app/webapiVersion'),
+      callQbitApi(cfg, '/api/v2/torrents/info'),
+    ]);
+
+    const version = String(versionRaw || '').trim();
+    const webApiVersion = String(webApiRaw || '').trim();
+    return {
+      version,
+      webApiVersion,
+      authMethod,
+      list: Array.isArray(list) ? list : [],
+    };
+  }
+
+  async function ensureQbitConnected(options = {}) {
+    if (isShuttingDown) {
+      return { ok: false, state: torrentConnectionState, reasonCode: 'shutting_down' };
+    }
+    if (activeConnectPromise) {
+      return activeConnectPromise;
+    }
+
+    const trigger = options.trigger || 'manual';
+    const allowAutoStart =
+      typeof options.allowAutoStart === 'boolean'
+        ? options.allowAutoStart
+        : qbitLifecyclePrefs.autoStartQbit;
+    const ignoreUserQuit = Boolean(options.ignoreUserQuit);
+    const maxAttempts = retryBackoffSchedule.length + 1;
+
+    activeConnectPromise = (async () => {
+      try {
+        if (ignoreUserQuit) {
+          userRequestedQuit = false;
+        }
+
+        if (!torrentConfig.enabled && trigger === 'startup') {
+          setQbitConnectionState('idle', null, {
+            reasonCode: 'disabled',
+            hint: null,
+            attempt: 0,
+            maxAttempts: 0,
+          });
+          return { ok: false, state: 'idle', reasonCode: 'disabled' };
+        }
+
+        if (userRequestedQuit && !ignoreUserQuit) {
+          setQbitConnectionState('failed', 'qBittorrent was stopped by user request.', {
+            reasonCode: 'user_stopped',
+            hint: 'Click Start in Background or Reconnect to start qBittorrent again.',
+            processRunning: false,
+          });
+          return { ok: false, state: 'failed', reasonCode: 'user_stopped' };
+        }
+
+        try {
+          assertSafeLoopbackConfig(torrentConfig);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          setQbitConnectionState('failed', msg, {
+            reasonCode: 'loopback_blocked',
+            hint: 'Set Host to 127.0.0.1 so qBittorrent Web UI stays private on this computer.',
+          });
+          return { ok: false, state: 'failed', reasonCode: 'loopback_blocked' };
+        }
+
+        setQbitConnectionState('checking', null, {
+          reasonCode: 'checking',
+          hint: null,
+          attempt: 0,
+          maxAttempts,
+        });
+
+        const iniInfo = inspectLocalQbitIni();
+        const portAlreadyOpen = await isLocalPortOpen(torrentConfig.host, torrentConfig.port, 400);
+        const procBefore = await detectQbitProcess();
+
+        let installInfo = null;
+        if (!portAlreadyOpen) {
+          if (!procBefore.running) {
+            installInfo = await qbitLifecycle.detectInstalledQbitPaths({
+              platform: runtimePlatform,
+              fsModule: fsImpl,
+              osModule: osImpl,
+              env: envImpl,
+              execFilePromise: execFilePromiseLocal,
+            });
+
+            if (!installInfo.installed) {
+              const probe = await probeOpenQbitWebUiPorts([
+                iniInfo.port || 8080,
+                8080,
+                8081,
+                8085,
+                9090,
+              ]);
+              if (probe.verifiedPort && probe.verifiedPort !== torrentConfig.port) {
+                setQbitConnectionState(
+                  'failed',
+                  `qBittorrent WebUI responded on port ${probe.verifiedPort} instead of configured port ${torrentConfig.port}.`,
+                  {
+                    reasonCode: 'port_mismatch',
+                    hint: `Switch SecretArea WebUI port to ${probe.verifiedPort} or update qBittorrent WebUI port to ${torrentConfig.port}.`,
+                    processRunning: true,
+                    detectedConfigPort: probe.verifiedPort,
+                    detectedOpenPorts: probe.openPorts,
+                  }
+                );
+                return { ok: false, state: 'failed', reasonCode: 'port_mismatch', detectedPort: probe.verifiedPort };
+              }
+
+              lastAutoRecoveryFailedAt = Date.now();
+              setQbitConnectionState('not_installed', 'qBittorrent is not installed on this system.', {
+                reasonCode: 'not_installed',
+                hint: 'Install qBittorrent or use Auto Install / Update qBittorrent.',
+                processRunning: false,
+                processName: null,
+                webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : null,
+                detectedConfigPort: iniInfo.configFound ? iniInfo.port : null,
+                detectedOpenPorts: probe.openPorts,
+              });
+              return { ok: false, state: 'not_installed', reasonCode: 'not_installed' };
+            }
+
+            if (iniInfo.configFound && iniInfo.webUiEnabled === false) {
+              lastAutoRecoveryFailedAt = Date.now();
+              setQbitConnectionState(
+                'webui_disabled',
+                'qBittorrent WebUI is disabled in qBittorrent configuration.',
+                {
+                  reasonCode: 'webui_disabled',
+                  hint: 'Open qBittorrent → Tools → Options → Web UI and enable "Web User Interface (Remote control)".',
+                  processRunning: false,
+                  processName: null,
+                  webUiEnabledInConfig: false,
+                  detectedConfigPort: iniInfo.port,
+                  httpsEnabledInConfig: iniInfo.httpsEnabled,
+                }
+              );
+              return { ok: false, state: 'webui_disabled', reasonCode: 'webui_disabled' };
+            }
+
+            if (!allowAutoStart) {
+              setQbitConnectionState(
+                'failed',
+                'qBittorrent is installed but not currently running.',
+                {
+                  reasonCode: 'not_running',
+                  hint: 'Click Start in Background or enable "Start qBittorrent automatically when SecretArea starts".',
+                  processRunning: false,
+                  processName: null,
+                  webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : null,
+                  detectedConfigPort: iniInfo.configFound ? iniInfo.port : null,
+                }
+              );
+              return { ok: false, state: 'failed', reasonCode: 'not_running' };
+            }
+
+            setQbitConnectionState('starting', null, {
+              reasonCode: 'starting_background',
+              hint: null,
+              processRunning: false,
+              webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : null,
+              detectedConfigPort: iniInfo.configFound ? iniInfo.port : null,
+            });
+
+            const launchRes = await launchQbitBackgroundInternal(installInfo);
+            if (!launchRes.ok) {
+              lastAutoRecoveryFailedAt = Date.now();
+              setQbitConnectionState(
+                'failed',
+                launchRes.error || 'Could not start qBittorrent in the background.',
+                {
+                  reasonCode: 'launch_failed',
+                  hint: 'Verify your qBittorrent installation or open Auto Install / Update qBittorrent.',
+                  processRunning: false,
+                }
+              );
+              return { ok: false, state: 'failed', reasonCode: 'launch_failed' };
+            }
+          } else {
+            // Process is already running cleanly — do NOT spawn duplicate
+            if (iniInfo.configFound && iniInfo.webUiEnabled === false) {
+              const probe = await probeOpenQbitWebUiPorts([torrentConfig.port, 8080, 8081, 8085, 9090]);
+              if (!probe.verifiedPort) {
+                lastAutoRecoveryFailedAt = Date.now();
+                setQbitConnectionState(
+                  'webui_disabled',
+                  'qBittorrent is running, but WebUI is disabled in qBittorrent settings.',
+                  {
+                    reasonCode: 'webui_disabled',
+                    hint: 'In qBittorrent, enable Tools → Options → Web UI → Web User Interface (Remote control).',
+                    processRunning: true,
+                    processName: procBefore.processName,
+                    webUiEnabledInConfig: false,
+                    detectedConfigPort: iniInfo.port,
+                  }
+                );
+                return { ok: false, state: 'webui_disabled', reasonCode: 'webui_disabled' };
+              }
+            }
+          }
+        }
+
+        if (iniInfo.configFound && iniInfo.webUiEnabled && iniInfo.httpsEnabled && !portAlreadyOpen) {
+          lastAutoRecoveryFailedAt = Date.now();
+          setQbitConnectionState(
+            'failed',
+            'qBittorrent WebUI has HTTPS enabled, which blocks local HTTP loopback sync.',
+            {
+              reasonCode: 'https_enabled',
+              hint: 'In qBittorrent Options → Web UI, uncheck "Use HTTPS instead of HTTP" for localhost.',
+              processRunning: true,
+              httpsEnabledInConfig: true,
+              detectedConfigPort: iniInfo.port,
+            }
+          );
+          return { ok: false, state: 'failed', reasonCode: 'https_enabled' };
+        }
+
+        // Phase 3: Wait for WebUI readiness + verify authenticated API v2 request with bounded backoff
+        const startedAt = Date.now();
+        let lastErr = null;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          if (isShuttingDown || (userRequestedQuit && !ignoreUserQuit)) {
+            return { ok: false, state: torrentConnectionState, reasonCode: 'aborted' };
+          }
+
+          setQbitConnectionState('connecting', null, {
+            reasonCode: 'connecting_webui',
+            hint: null,
+            processRunning: true,
+            processName: procBefore.processName || torrentConnectionDetail.processName,
+            managedByApp: managedQbitByApp,
+            webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : null,
+            detectedConfigPort: iniInfo.configFound ? iniInfo.port : null,
+            attempt: attempt + 1,
+            maxAttempts,
+          });
+
+          const portReady = await isLocalPortOpen(torrentConfig.host, torrentConfig.port, 450);
+          if (portReady) {
+            try {
+              const verified = await verifyAuthenticatedWebUi(torrentConfig);
+              torrentVersion = verified.version || torrentVersion;
+              torrentWebApiVersion = verified.webApiVersion || torrentWebApiVersion;
+              qbitConfigSyncAfterConnect(verified.list);
+              setQbitConnectionState('connected', null, {
+                reasonCode: 'ok',
+                hint: null,
+                processRunning: true,
+                managedByApp: managedQbitByApp,
+                webUiEnabledInConfig: iniInfo.configFound ? iniInfo.webUiEnabled : true,
+                detectedConfigPort: iniInfo.configFound ? iniInfo.port : torrentConfig.port,
+                detectedOpenPorts: [torrentConfig.port],
+                attempt: attempt + 1,
+                maxAttempts,
+                lastConnectedAt: Date.now(),
+              });
+              rescheduleTorrentPollerIfNeeded();
+              return {
+                ok: true,
+                state: 'connected',
+                version: torrentVersion,
+                webApiVersion: torrentWebApiVersion,
+              };
+            } catch (err) {
+              lastErr = err;
+              if (isAuthRelatedError(err)) {
+                lastAutoRecoveryFailedAt = Date.now();
+                const diagnosed = diagnoseQbitError(err, torrentConfig);
+                setQbitConnectionState('auth_required', diagnosed.message, {
+                  reasonCode: diagnosed.reasonCode,
+                  hint: diagnosed.hint,
+                  processRunning: true,
+                  attempt: attempt + 1,
+                  maxAttempts,
+                });
+                // CRITICAL: stop immediately so we do not trigger qBittorrent's 403 localhost IP ban!
+                return { ok: false, state: 'auth_required', reasonCode: diagnosed.reasonCode };
+              }
+              if (!isConnectionRefusedError(err)) {
+                break;
+              }
+            }
+          }
+
+          if (attempt < retryBackoffSchedule.length) {
+            const elapsed = Date.now() - startedAt;
+            if (elapsed >= startupMaxWait) {
+              break;
+            }
+            const baseWait = retryBackoffSchedule[attempt];
+            const jitter = Math.min(120, Math.round(baseWait * 0.1));
+            const waitMs = Math.min(baseWait + jitter, Math.max(20, startupMaxWait - elapsed));
+            await sleepMs(waitMs);
+          }
+        }
+
+        // Phase 4: Exhausted retries — check for port mismatch or HTTPS mismatch
+        lastAutoRecoveryFailedAt = Date.now();
+        const probePorts = [
+          iniInfo.configFound ? iniInfo.port : 8080,
+          8080,
+          8081,
+          8085,
+          9090,
+        ].filter((p) => p !== torrentConfig.port);
+        const probe = await probeOpenQbitWebUiPorts(probePorts);
+        const procAfter = await detectQbitProcess();
+
+        if (probe.verifiedPort) {
+          setQbitConnectionState(
+            'failed',
+            `qBittorrent WebUI is listening on port ${probe.verifiedPort}, but SecretArea is configured for port ${torrentConfig.port}.`,
+            {
+              reasonCode: 'port_mismatch',
+              hint: `Switch SecretArea to port ${probe.verifiedPort} or change qBittorrent WebUI port to ${torrentConfig.port}.`,
+              processRunning: procAfter.running,
+              processName: procAfter.processName,
+              detectedConfigPort: probe.verifiedPort,
+              detectedOpenPorts: probe.openPorts,
+              attempt: maxAttempts,
+              maxAttempts,
+            }
+          );
+          return {
+            ok: false,
+            state: 'failed',
+            reasonCode: 'port_mismatch',
+            detectedPort: probe.verifiedPort,
+          };
+        }
+
+        if (iniInfo.configFound && iniInfo.webUiEnabled && iniInfo.port !== torrentConfig.port) {
+          setQbitConnectionState(
+            'failed',
+            `Port mismatch: qBittorrent config uses port ${iniInfo.port}, while SecretArea is configured for port ${torrentConfig.port}.`,
+            {
+              reasonCode: 'port_mismatch',
+              hint: `Switch SecretArea to port ${iniInfo.port} or update qBittorrent Web UI port to ${torrentConfig.port}.`,
+              processRunning: procAfter.running,
+              processName: procAfter.processName,
+              detectedConfigPort: iniInfo.port,
+              detectedOpenPorts: probe.openPorts,
+              attempt: maxAttempts,
+              maxAttempts,
+            }
+          );
+          return {
+            ok: false,
+            state: 'failed',
+            reasonCode: 'port_mismatch',
+            detectedPort: iniInfo.port,
+          };
+        }
+
+        if (iniInfo.configFound && iniInfo.httpsEnabled) {
+          setQbitConnectionState(
+            'failed',
+            'qBittorrent WebUI has HTTPS enabled instead of HTTP on localhost.',
+            {
+              reasonCode: 'https_enabled',
+              hint: 'In qBittorrent Options → Web UI, uncheck "Use HTTPS instead of HTTP" for local loopback.',
+              processRunning: procAfter.running,
+              httpsEnabledInConfig: true,
+            }
+          );
+          return { ok: false, state: 'failed', reasonCode: 'https_enabled' };
+        }
+
+        const diagnosed = diagnoseQbitError(
+          lastErr || new Error(`Timed out waiting for WebUI at http://${torrentConfig.host}:${torrentConfig.port}`),
+          torrentConfig
+        );
+        setQbitConnectionState('failed', diagnosed.message, {
+          reasonCode: lastErr ? diagnosed.reasonCode : 'timeout',
+          hint: diagnosed.hint,
+          processRunning: procAfter.running,
+          processName: procAfter.processName,
+          detectedOpenPorts: probe.openPorts,
+          attempt: maxAttempts,
+          maxAttempts,
+        });
+        return { ok: false, state: 'failed', reasonCode: 'timeout' };
+      } finally {
+        activeConnectPromise = null;
+      }
+    })();
+
+    return activeConnectPromise;
+  }
+
+  function qbitConfigSyncAfterConnect(rawList) {
+    if (!Array.isArray(rawList) || rawList.length === 0) return;
+    const remoteTorrents = mapRemoteTorrentList(rawList);
+    reconcileRemoteTorrents(remoteTorrents, false);
   }
 
   async function testTorrentConnection(rawOverride) {
@@ -1915,7 +2543,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
               : torrentConfig.password,
           apiKey:
             typeof rawOverride.apiKey === 'string' && rawOverride.apiKey.length > 0
-              ? rawOverride.apiKey
+              ? rawOverride.apiKey.trim()
               : torrentConfig.apiKey,
         }
       : torrentConfig;
@@ -1939,29 +2567,39 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         };
       }
 
-      let authMethod = cfg.apiKey ? 'api-key' : 'localhost-bypass';
-      if (!cfg.apiKey && (cfg.username || cfg.password)) {
-        authMethod = await ensureQbitSession(cfg);
-      }
-
-      const [versionRaw, webApiRaw, list] = await Promise.all([
-        callQbitApi(cfg, '/api/v2/app/version'),
-        callQbitApi(cfg, '/api/v2/app/webapiVersion'),
-        callQbitApi(cfg, '/api/v2/torrents/info'),
-      ]);
-
-      const version = String(versionRaw || '').trim();
-      const webApiVersion = String(webApiRaw || '').trim();
-      torrentVersion = version || torrentVersion;
-      torrentWebApiVersion = webApiVersion || torrentWebApiVersion;
-
       const matchesActiveTarget =
         !rawOverride ||
         (cfg.host === torrentConfig.host && Number(cfg.port) === Number(torrentConfig.port));
+
+      // If testing active target and WebUI port isn't open yet, check whether we can auto-start qBittorrent cleanly
+      const portOpen = await isLocalPortOpen(cfg.host, cfg.port, 400);
+      if (!portOpen && matchesActiveTarget && qbitLifecyclePrefs.autoStartQbit) {
+        const recovered = await ensureQbitConnected({
+          trigger: 'test',
+          allowAutoStart: true,
+          ignoreUserQuit: true,
+        });
+        if (!recovered.ok) {
+          return {
+            ok: false,
+            message: torrentError || 'Cannot reach qBittorrent Web UI.',
+            hint: torrentConnectionDetail.hint || undefined,
+          };
+        }
+      }
+
+      const verified = await verifyAuthenticatedWebUi(cfg);
+      torrentVersion = verified.version || torrentVersion;
+      torrentWebApiVersion = verified.webApiVersion || torrentWebApiVersion;
+
       if (matchesActiveTarget) {
-        torrentConnected = true;
-        torrentError = null;
-        emitSnapshot(true);
+        setQbitConnectionState('connected', null, {
+          reasonCode: 'ok',
+          hint: null,
+          processRunning: true,
+          detectedOpenPorts: [cfg.port],
+          lastConnectedAt: Date.now(),
+        });
         if (torrentConfig.enabled) {
           void pollTorrentWebUiOnce();
         }
@@ -1969,11 +2607,11 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
 
       return {
         ok: true,
-        version,
-        webApiVersion,
-        authMethod,
-        activeCount: Array.isArray(list) ? list.length : 0,
-        message: `Connected to qBittorrent ${version} (WebAPI ${webApiVersion})`,
+        version: verified.version,
+        webApiVersion: verified.webApiVersion,
+        authMethod: verified.authMethod,
+        activeCount: verified.list.length,
+        message: `Connected to qBittorrent ${verified.version} (WebAPI ${verified.webApiVersion})`,
       };
     } catch (err) {
       const detected = await detectInstalledQbit().catch(() => null);
@@ -1982,9 +2620,11 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
         !rawOverride ||
         (cfg.host === torrentConfig.host && Number(cfg.port) === Number(torrentConfig.port));
       if (matchesActiveTarget) {
-        torrentConnected = false;
-        torrentError = diagnosed.message;
-        emitSnapshot(true);
+        setQbitConnectionState(diagnosed.state || 'failed', diagnosed.message, {
+          reasonCode: diagnosed.reasonCode,
+          hint: diagnosed.hint,
+          processRunning: Boolean(detected?.isRunning),
+        });
       }
       return {
         ok: false,
@@ -2031,8 +2671,173 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     return Number(progressRatio) >= 1 ? 'completed' : 'downloading';
   }
 
+  function mapRemoteTorrentList(rawList) {
+    if (!Array.isArray(rawList)) return [];
+    return rawList.map((t) => {
+      const progressRatio = Math.min(1, Math.max(0, Number(t.progress) || 0));
+      const mappedStatus = mapQbitStatus(String(t.state || ''), progressRatio);
+      const computedProgress =
+        mappedStatus === 'completed'
+          ? 100
+          : Math.min(99.9, Math.max(0, Math.round(progressRatio * 1000) / 10));
+      const totalBytes = Math.max(0, Number(t.size) || Number(t.total_size) || 0);
+      const completedBytes =
+        Number(t.completed) > 0
+          ? Number(t.completed)
+          : totalBytes > 0
+          ? Math.round(totalBytes * progressRatio)
+          : Math.max(0, Number(t.downloaded) || 0);
+      const rawEta = Number(t.eta);
+
+      return {
+        hash: String(t.hash || '').toUpperCase(),
+        infohashV1: String(t.infohash_v1 || '').toUpperCase(),
+        infohashV2: String(t.infohash_v2 || '').toUpperCase(),
+        name: String(t.name || 'Torrent'),
+        totalBytes,
+        downloadedBytes: completedBytes,
+        progress: computedProgress,
+        speedBytesPerSec: Math.max(0, Number(t.dlspeed) || 0),
+        uploadSpeedBytesPerSec: Math.max(0, Number(t.upspeed) || 0),
+        etaSeconds:
+          Number.isFinite(rawEta) && rawEta >= 0 && rawEta < 8640000 ? rawEta : null,
+        status: mappedStatus,
+        peers: Math.max(0, Number(t.num_leechs) || 0),
+        peersTotal: Math.max(0, Number(t.num_incomplete) || 0),
+        seeds: Math.max(0, Number(t.num_seeds) || 0),
+        seedsTotal: Math.max(0, Number(t.num_complete) || 0),
+        ratio:
+          Number.isFinite(Number(t.ratio)) && Number(t.ratio) >= 0
+            ? Math.round(Number(t.ratio) * 100) / 100
+            : 0,
+        savePath: String(t.content_path || t.save_path || ''),
+        stateRaw: String(t.state || ''),
+      };
+    });
+  }
+
+  function reconcileRemoteTorrents(remoteTorrents, initialChanged = false) {
+    let changed = initialChanged;
+    for (const rt of remoteTorrents) {
+      if (!rt.hash) continue;
+      const normalizedRemoteName = normalizeTorrentCompareName(rt.name);
+      const existingIdx = tasks.findIndex((t) => {
+        if (t.source !== 'qbittorrent') return false;
+        const localHash = (t.torrentHash || extractMagnetInfoHash(t.url) || '').toUpperCase();
+        if (
+          localHash &&
+          (localHash === rt.hash ||
+            (rt.infohashV1 && localHash === rt.infohashV1) ||
+            (rt.infohashV2 &&
+              (localHash === rt.infohashV2 || localHash === rt.infohashV2.slice(0, 40))))
+        ) {
+          return true;
+        }
+        if (
+          normalizedRemoteName &&
+          (normalizeTorrentCompareName(t.fileName) === normalizedRemoteName ||
+            normalizeTorrentCompareName(t.title) === normalizedRemoteName)
+        ) {
+          return true;
+        }
+        return false;
+      });
+
+      if (existingIdx !== -1) {
+        const prev = tasks[existingIdx];
+        if (prev.status === 'cancelled') continue;
+        const keepActiveSpeed =
+          rt.status === 'downloading' || rt.status === 'resolving' || rt.status === 'queued';
+        const nextFileName = rt.name || prev.fileName;
+        const nextSpeed = keepActiveSpeed ? rt.speedBytesPerSec : 0;
+        const nextEta =
+          rt.status === 'downloading' ? rt.etaSeconds : rt.status === 'completed' ? 0 : null;
+        const nextSavePath = rt.savePath || prev.savePath;
+        const nextError = rt.status === 'failed' ? `qBittorrent status: ${rt.stateRaw}` : null;
+
+        const hasDiff =
+          prev.fileName !== nextFileName ||
+          prev.torrentHash !== rt.hash ||
+          prev.status !== rt.status ||
+          prev.progress !== rt.progress ||
+          prev.downloadedBytes !== rt.downloadedBytes ||
+          prev.totalBytes !== rt.totalBytes ||
+          prev.speedBytesPerSec !== nextSpeed ||
+          (prev.uploadSpeedBytesPerSec || 0) !== rt.uploadSpeedBytesPerSec ||
+          prev.etaSeconds !== nextEta ||
+          (prev.torrentPeers ?? null) !== rt.peers ||
+          (prev.torrentSeeds ?? null) !== rt.seeds ||
+          (prev.torrentRatio ?? null) !== rt.ratio ||
+          prev.torrentStateRaw !== rt.stateRaw ||
+          prev.savePath !== nextSavePath ||
+          (prev.error || null) !== nextError;
+
+        if (!hasDiff) {
+          continue;
+        }
+
+        tasks[existingIdx] = {
+          ...prev,
+          fileName: nextFileName,
+          torrentHash: rt.hash,
+          status: rt.status,
+          progress: rt.progress,
+          downloadedBytes: rt.downloadedBytes,
+          totalBytes: rt.totalBytes,
+          speedBytesPerSec: nextSpeed,
+          uploadSpeedBytesPerSec: rt.uploadSpeedBytesPerSec,
+          etaSeconds: nextEta,
+          torrentPeers: rt.peers,
+          torrentPeersTotal: rt.peersTotal,
+          torrentSeeds: rt.seeds,
+          torrentSeedsTotal: rt.seedsTotal,
+          torrentRatio: rt.ratio,
+          torrentStateRaw: rt.stateRaw,
+          savePath: nextSavePath,
+          canPauseResume: true,
+          completedAt: rt.status === 'completed' ? prev.completedAt || Date.now() : null,
+          error: nextError,
+          updatedAt: Date.now(),
+        };
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      emitSnapshot(false, false);
+    }
+  }
+
   async function pollTorrentWebUiOnce() {
     if (!torrentConfig.enabled || isShuttingDown) return;
+    if (activeConnectPromise) return;
+
+    if (!torrentConnected) {
+      if (userRequestedQuit) return;
+      // Never auto-retry failed credentials (avoids localhost 403 login ban)
+      if (torrentConnectionState === 'auth_required') return;
+      if (!qbitLifecyclePrefs.autoReconnect) return;
+
+      const sinceLastFail = Date.now() - lastAutoRecoveryFailedAt;
+      if (lastAutoRecoveryFailedAt > 0 && sinceLastFail < autoRecoveryCooldown) {
+        return;
+      }
+
+      // If WebUI was disabled or not installed, only run a light check without spamming restarts
+      if (torrentConnectionState === 'webui_disabled' || torrentConnectionState === 'not_installed') {
+        const portOpen = await isLocalPortOpen(torrentConfig.host, torrentConfig.port, 350);
+        if (!portOpen) {
+          lastAutoRecoveryFailedAt = Date.now();
+          return;
+        }
+      }
+
+      await ensureQbitConnected({
+        trigger: 'poll',
+        allowAutoStart: qbitLifecyclePrefs.autoStartQbit,
+      });
+      return;
+    }
 
     try {
       if (!torrentVersion || !torrentWebApiVersion) {
@@ -2045,154 +2850,43 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       }
 
       const rawList = await callQbitApi(torrentConfig, '/api/v2/torrents/info');
-      const remoteTorrents = Array.isArray(rawList)
-        ? rawList.map((t) => {
-            const progressRatio = Math.min(1, Math.max(0, Number(t.progress) || 0));
-            const mappedStatus = mapQbitStatus(String(t.state || ''), progressRatio);
-            const computedProgress =
-              mappedStatus === 'completed'
-                ? 100
-                : Math.min(99.9, Math.max(0, Math.round(progressRatio * 1000) / 10));
-            const totalBytes = Math.max(0, Number(t.size) || Number(t.total_size) || 0);
-            const completedBytes =
-              Number(t.completed) > 0
-                ? Number(t.completed)
-                : totalBytes > 0
-                ? Math.round(totalBytes * progressRatio)
-                : Math.max(0, Number(t.downloaded) || 0);
-            const rawEta = Number(t.eta);
-
-            return {
-              hash: String(t.hash || '').toUpperCase(),
-              infohashV1: String(t.infohash_v1 || '').toUpperCase(),
-              infohashV2: String(t.infohash_v2 || '').toUpperCase(),
-              name: String(t.name || 'Torrent'),
-              totalBytes,
-              downloadedBytes: completedBytes,
-              progress: computedProgress,
-              speedBytesPerSec: Math.max(0, Number(t.dlspeed) || 0),
-              uploadSpeedBytesPerSec: Math.max(0, Number(t.upspeed) || 0),
-              etaSeconds:
-                Number.isFinite(rawEta) && rawEta >= 0 && rawEta < 8640000 ? rawEta : null,
-              status: mappedStatus,
-              peers: Math.max(0, Number(t.num_leechs) || 0),
-              peersTotal: Math.max(0, Number(t.num_incomplete) || 0),
-              seeds: Math.max(0, Number(t.num_seeds) || 0),
-              seedsTotal: Math.max(0, Number(t.num_complete) || 0),
-              ratio:
-                Number.isFinite(Number(t.ratio)) && Number(t.ratio) >= 0
-                  ? Math.round(Number(t.ratio) * 100) / 100
-                  : 0,
-              savePath: String(t.content_path || t.save_path || ''),
-              stateRaw: String(t.state || ''),
-            };
-          })
-        : [];
-
+      const remoteTorrents = mapRemoteTorrentList(rawList);
       const wasConnected = torrentConnected;
       torrentConnected = true;
+      torrentConnectionState = 'connected';
       torrentError = null;
+      torrentConnectionDetail = {
+        ...torrentConnectionDetail,
+        reasonCode: 'ok',
+        hint: null,
+        processRunning: true,
+        lastConnectedAt: Date.now(),
+      };
 
-      let changed = !wasConnected;
-      for (const rt of remoteTorrents) {
-        if (!rt.hash) continue;
-        const normalizedRemoteName = normalizeTorrentCompareName(rt.name);
-        const existingIdx = tasks.findIndex((t) => {
-          if (t.source !== 'qbittorrent') return false;
-          const localHash = (t.torrentHash || extractMagnetInfoHash(t.url) || '').toUpperCase();
-          if (
-            localHash &&
-            (localHash === rt.hash ||
-              (rt.infohashV1 && localHash === rt.infohashV1) ||
-              (rt.infohashV2 &&
-                (localHash === rt.infohashV2 || localHash === rt.infohashV2.slice(0, 40))))
-          ) {
-            return true;
-          }
-          if (
-            normalizedRemoteName &&
-            (normalizeTorrentCompareName(t.fileName) === normalizedRemoteName ||
-              normalizeTorrentCompareName(t.title) === normalizedRemoteName)
-          ) {
-            return true;
-          }
-          return false;
-        });
-
-        if (existingIdx !== -1) {
-          const prev = tasks[existingIdx];
-          if (prev.status === 'cancelled') continue;
-          const keepActiveSpeed =
-            rt.status === 'downloading' || rt.status === 'resolving' || rt.status === 'queued';
-          const nextFileName = rt.name || prev.fileName;
-          const nextSpeed = keepActiveSpeed ? rt.speedBytesPerSec : 0;
-          const nextEta =
-            rt.status === 'downloading' ? rt.etaSeconds : rt.status === 'completed' ? 0 : null;
-          const nextSavePath = rt.savePath || prev.savePath;
-          const nextError = rt.status === 'failed' ? `qBittorrent status: ${rt.stateRaw}` : null;
-
-          const hasDiff =
-            prev.fileName !== nextFileName ||
-            prev.torrentHash !== rt.hash ||
-            prev.status !== rt.status ||
-            prev.progress !== rt.progress ||
-            prev.downloadedBytes !== rt.downloadedBytes ||
-            prev.totalBytes !== rt.totalBytes ||
-            prev.speedBytesPerSec !== nextSpeed ||
-            (prev.uploadSpeedBytesPerSec || 0) !== rt.uploadSpeedBytesPerSec ||
-            prev.etaSeconds !== nextEta ||
-            (prev.torrentPeers ?? null) !== rt.peers ||
-            (prev.torrentSeeds ?? null) !== rt.seeds ||
-            (prev.torrentRatio ?? null) !== rt.ratio ||
-            prev.torrentStateRaw !== rt.stateRaw ||
-            prev.savePath !== nextSavePath ||
-            (prev.error || null) !== nextError;
-
-          if (!hasDiff) {
-            continue;
-          }
-
-          const next = {
-            ...prev,
-            fileName: nextFileName,
-            torrentHash: rt.hash,
-            status: rt.status,
-            progress: rt.progress,
-            downloadedBytes: rt.downloadedBytes,
-            totalBytes: rt.totalBytes,
-            speedBytesPerSec: nextSpeed,
-            uploadSpeedBytesPerSec: rt.uploadSpeedBytesPerSec,
-            etaSeconds: nextEta,
-            torrentPeers: rt.peers,
-            torrentPeersTotal: rt.peersTotal,
-            torrentSeeds: rt.seeds,
-            torrentSeedsTotal: rt.seedsTotal,
-            torrentRatio: rt.ratio,
-            torrentStateRaw: rt.stateRaw,
-            savePath: nextSavePath,
-            canPauseResume: true,
-            completedAt: rt.status === 'completed' ? prev.completedAt || Date.now() : null,
-            error: nextError,
-            updatedAt: Date.now(),
-          };
-          tasks[existingIdx] = next;
-          changed = true;
-        }
-      }
-
-      if (changed) {
-        emitSnapshot(false, false);
-      }
+      reconcileRemoteTorrents(remoteTorrents, !wasConnected);
       rescheduleTorrentPollerIfNeeded();
     } catch (err) {
       const diagnosed = diagnoseQbitError(err, torrentConfig);
-      const wasConnected = torrentConnected;
-      const prevErr = torrentError;
-      torrentConnected = false;
-      torrentError = diagnosed.message;
-      if (wasConnected || prevErr !== torrentError) {
-        emitSnapshot(true, false);
+      setQbitConnectionState(diagnosed.state || 'failed', diagnosed.message, {
+        reasonCode: diagnosed.reasonCode,
+        hint: diagnosed.hint,
+      });
+
+      if (
+        isConnectionRefusedError(err) &&
+        qbitLifecyclePrefs.autoReconnect &&
+        !userRequestedQuit &&
+        !isShuttingDown
+      ) {
+        const sinceLastFail = Date.now() - lastAutoRecoveryFailedAt;
+        if (lastAutoRecoveryFailedAt === 0 || sinceLastFail >= autoRecoveryCooldown) {
+          await ensureQbitConnected({
+            trigger: 'poll',
+            allowAutoStart: qbitLifecyclePrefs.autoStartQbit,
+          });
+        }
       }
+
       rescheduleTorrentPollerIfNeeded();
     }
   }
@@ -2241,6 +2935,12 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       torrentVersion = null;
       torrentWebApiVersion = null;
       torrentError = null;
+      torrentConnectionState = 'idle';
+      torrentConnectionDetail = {
+        ...torrentConnectionDetail,
+        reasonCode: 'disabled',
+        hint: null,
+      };
       return;
     }
     if (perfConfig.pauseOnMinimize && isWindowHiddenOrMinimized()) {
@@ -2352,6 +3052,13 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     const { downloadFolder } = getDownloadSettings();
 
     if (torrentConfig.enabled) {
+      if (!torrentConnected) {
+        await ensureQbitConnected({
+          trigger: 'download',
+          allowAutoStart: true,
+          ignoreUserQuit: true,
+        });
+      }
       try {
         let multipart;
         if (torrentFileBuffer) {
@@ -2973,8 +3680,9 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       hasHeaderControlChars(rawPassword) ||
       hasHeaderControlChars(rawApiKey)
     ) {
-      torrentError = 'Credentials contain invalid control or newline characters.';
-      emitSnapshot(true);
+      setQbitConnectionState('failed', 'Credentials contain invalid control or newline characters.', {
+        reasonCode: 'invalid_credentials',
+      });
       return getSnapshot();
     }
 
@@ -2988,18 +3696,133 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       pollIntervalMs: 1500,
     };
 
+    if (nextInput?.lifecyclePrefs && typeof nextInput.lifecyclePrefs === 'object') {
+      qbitLifecyclePrefs = sanitizeLifecyclePrefs({
+        ...qbitLifecyclePrefs,
+        ...nextInput.lifecyclePrefs,
+      });
+    }
+
     torrentConfig = nextCfg;
     qbitCookie = '';
     torrentVersion = null;
     torrentWebApiVersion = null;
     torrentError = null;
-    writePersistedTorrentConfig(nextCfg);
-    syncTorrentPoller();
+    lastAutoRecoveryFailedAt = 0;
+    userRequestedQuit = false;
+    writePersistedTorrentConfig(nextCfg, qbitLifecyclePrefs);
+    syncTorrentPoller(false);
     if (nextCfg.enabled) {
-      await pollTorrentWebUiOnce();
+      await ensureQbitConnected({
+        trigger: 'manual',
+        allowAutoStart: qbitLifecyclePrefs.autoStartQbit,
+        ignoreUserQuit: true,
+      });
+    } else {
+      setQbitConnectionState('idle', null, {
+        reasonCode: 'disabled',
+        hint: null,
+      });
     }
-    emitSnapshot(true);
     return getSnapshot();
+  }
+
+  async function saveQbitLifecyclePrefs(patch) {
+    const nextPrefs = sanitizeLifecyclePrefs({
+      ...qbitLifecyclePrefs,
+      ...(patch && typeof patch === 'object' ? patch : {}),
+    });
+    qbitLifecyclePrefs = nextPrefs;
+    writePersistedTorrentConfig(torrentConfig, nextPrefs);
+    emitSnapshot(true, false);
+    if (nextPrefs.autoReconnect && torrentConfig.enabled && !torrentConnected && !userRequestedQuit) {
+      void ensureQbitConnected({
+        trigger: 'manual',
+        allowAutoStart: nextPrefs.autoStartQbit,
+      });
+    }
+    return getSnapshot();
+  }
+
+  async function applyDetectedTorrentPort(port) {
+    const parsedPort = Number(port);
+    if (!Number.isFinite(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      return getSnapshot();
+    }
+    return saveTorrentConfig({
+      ...torrentConfig,
+      enabled: true,
+      host: isLoopbackHost(torrentConfig.host) ? torrentConfig.host : '127.0.0.1',
+      port: Math.round(parsedPort),
+    });
+  }
+
+  async function reconnectTorrent() {
+    lastAutoRecoveryFailedAt = 0;
+    userRequestedQuit = false;
+    if (!torrentConfig.enabled) {
+      torrentConfig = { ...torrentConfig, enabled: true };
+      writePersistedTorrentConfig(torrentConfig, qbitLifecyclePrefs);
+    }
+    await ensureQbitConnected({
+      trigger: 'manual',
+      allowAutoStart: true,
+      ignoreUserQuit: true,
+    });
+    return getSnapshot();
+  }
+
+  async function startQbitInBackground() {
+    lastAutoRecoveryFailedAt = 0;
+    userRequestedQuit = false;
+    if (!torrentConfig.enabled) {
+      torrentConfig = { ...torrentConfig, enabled: true };
+      writePersistedTorrentConfig(torrentConfig, qbitLifecyclePrefs);
+    }
+    await ensureQbitConnected({
+      trigger: 'manual',
+      allowAutoStart: true,
+      ignoreUserQuit: true,
+    });
+    return getSnapshot();
+  }
+
+  async function quitQbitClient() {
+    userRequestedQuit = true;
+    let shutdownSent = false;
+    try {
+      const portOpen = await isLocalPortOpen(torrentConfig.host, torrentConfig.port, 400);
+      if (portOpen) {
+        await callQbitApi(torrentConfig, '/api/v2/app/shutdown', { method: 'POST' });
+        shutdownSent = true;
+      }
+    } catch {
+      // ignore remote shutdown errors cleanly
+    }
+
+    if (shutdownSent) {
+      for (let i = 0; i < 6; i += 1) {
+        await sleepMs(250);
+        const proc = await detectQbitProcess();
+        if (!proc.running) break;
+      }
+    }
+
+    const procAfter = await detectQbitProcess();
+    managedQbitByApp = false;
+    qbitCookie = '';
+    setQbitConnectionState('failed', 'qBittorrent was stopped by user request.', {
+      reasonCode: 'user_stopped',
+      hint: 'Click Start in Background or Reconnect to launch qBittorrent again.',
+      processRunning: procAfter.running,
+      processName: procAfter.processName,
+      managedByApp: false,
+    });
+    return {
+      ok: !procAfter.running || shutdownSent,
+      processRunning: procAfter.running,
+      snapshot: getSnapshot(),
+    };
   }
 
   function registerIpc(ipcMain, isTrustedSender) {
@@ -3067,7 +3890,7 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       if (!isTrustedSender(event)) return false;
       const clean = validateDownloadUrl(rawUrl);
       if (!clean) return false;
-      await shell.openExternal(clean);
+      await shellImpl.openExternal(clean);
       return true;
     });
 
@@ -3085,13 +3908,48 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
       if (!isTrustedSender(event)) return null;
       return testTorrentConnection(cfg);
     });
+
+    ipcMain.handle('downloads:reconnect-torrent', async (event) => {
+      if (!isTrustedSender(event)) return null;
+      return reconnectTorrent();
+    });
+
+    ipcMain.handle('downloads:start-qbit-background', async (event) => {
+      if (!isTrustedSender(event)) return null;
+      return startQbitInBackground();
+    });
+
+    ipcMain.handle('downloads:quit-qbit', async (event) => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Unauthorized' };
+      return quitQbitClient();
+    });
+
+    ipcMain.handle('downloads:apply-detected-port', async (event, port) => {
+      if (!isTrustedSender(event)) return null;
+      return applyDetectedTorrentPort(port);
+    });
+
+    ipcMain.handle('downloads:save-qbit-lifecycle-prefs', async (event, prefs) => {
+      if (!isTrustedSender(event)) return null;
+      return saveQbitLifecyclePrefs(prefs);
+    });
   }
 
   function init() {
     readPersistedTorrentConfig();
     readPersistedTasks();
-    registerGlobalWillDownload();
-    syncTorrentPoller();
+    if (typeof session !== 'undefined' && session && session.defaultSession) {
+      registerGlobalWillDownload();
+    }
+    syncTorrentPoller(false);
+    if (torrentConfig.enabled) {
+      void ensureQbitConnected({
+        trigger: 'startup',
+        allowAutoStart: qbitLifecyclePrefs.autoStartQbit,
+      });
+    } else {
+      setQbitConnectionState('idle', null, { reasonCode: 'disabled', hint: null }, false);
+    }
   }
 
   function shutdown() {
@@ -3122,6 +3980,20 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     }
     activeMegaStreams.clear();
     persistTasksToDisk(true);
+
+    // Background persistence rule:
+    // - Never kill user-managed qBittorrent instances.
+    // - Never terminate active torrent downloads on SecretArea close.
+    // - Only gracefully stop SecretArea-launched qBittorrent if keepQbitRunningOnClose === false AND 0 active torrents.
+    if (
+      qbitLifecyclePrefs.keepQbitRunningOnClose === false &&
+      managedQbitByApp &&
+      torrentConnected &&
+      !hasActiveTorrentTasks()
+    ) {
+      managedQbitByApp = false;
+      void callQbitApi(torrentConfig, '/api/v2/app/shutdown', { method: 'POST' }).catch(() => null);
+    }
   }
 
   return {
@@ -3130,6 +4002,16 @@ function createDownloadManager({ getMainWindow, readSettings, writeSettings }) {
     registerIpc,
     getSnapshot,
     testTorrentConnection,
+    ensureQbitConnected,
+    reconnectTorrent,
+    startQbitInBackground,
+    quitQbitClient,
+    applyDetectedTorrentPort,
+    saveTorrentConfig,
+    saveQbitLifecyclePrefs,
+    getQbitLifecyclePrefs: () => ({ ...qbitLifecyclePrefs }),
+    detectInstalledQbit,
+    startDownload,
     setPerformanceConfig,
     onWindowHidden,
     onWindowShown,

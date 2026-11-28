@@ -158,6 +158,24 @@ export interface LauncherTranslations {
     modeWebPreviewBadge: string;
     torrentSavedToast: string;
     torrentManageSetupBtn: string;
+    torrentLifecycleSectionTitle: string;
+    torrentLifecycleNoOsAutostartNote: string;
+    torrentLifecycleSavedToast: string;
+    torrentAutoStartTitle: string;
+    torrentAutoStartDesc: string;
+    torrentKeepRunningTitle: string;
+    torrentKeepRunningDesc: string;
+    torrentStartMinimizedTitle: string;
+    torrentStartMinimizedDesc: string;
+    torrentAutoReconnectTitle: string;
+    torrentAutoReconnectDesc: string;
+    torrentStatusChecking: string;
+    torrentStatusStarting: string;
+    torrentStatusConnecting: string;
+    torrentStatusAuthRequired: string;
+    torrentStatusNotInstalled: string;
+    torrentStatusWebUiDisabled: string;
+    torrentStatusFailed: string;
     replaySetupBtn: string;
     closeBehaviorTitle: string;
     closeBehaviorDesc: string;
@@ -318,6 +336,20 @@ export interface LauncherTranslations {
     etaCalculating: string;
     torrentConnected: string;
     torrentDisconnected: string;
+    torrentChecking: string;
+    torrentStarting: string;
+    torrentConnecting: string;
+    torrentAuthRequired: string;
+    torrentNotInstalled: string;
+    torrentWebUiDisabled: string;
+    torrentFailed: string;
+    torrentReconnectBtn: string;
+    torrentRetryingBtn: string;
+    torrentStartBackgroundBtn: string;
+    torrentStartingBackgroundBtn: string;
+    torrentQuitQbitBtn: string;
+    torrentSwitchPortBtn: string;
+    torrentFixAuthBtn: string;
     torrentWebPreviewStatus: string;
     configureTorrentBtn: string;
     speedGraphTitle: string;
@@ -1737,6 +1769,24 @@ const EN: LauncherTranslations = {
     modeWebPreviewBadge: 'Web Preview',
     torrentSavedToast: 'qBittorrent settings saved',
     torrentManageSetupBtn: 'Auto Install / Update qBittorrent',
+    torrentLifecycleSectionTitle: 'Background Process & Lifecycle Preferences',
+    torrentLifecycleNoOsAutostartNote: 'Note: Launching qBittorrent automatically applies only when SecretArea runs or starts a torrent — OS Windows/Linux/macOS login autostart is never enabled silently.',
+    torrentLifecycleSavedToast: 'qBittorrent lifecycle preference saved',
+    torrentAutoStartTitle: 'Start qBittorrent automatically when SecretArea starts',
+    torrentAutoStartDesc: 'Launches qBittorrent automatically if installed when SecretArea starts or adds a torrent, reusing any already running instance.',
+    torrentKeepRunningTitle: 'Keep qBittorrent running after SecretArea closes',
+    torrentKeepRunningDesc: 'Allows active and background torrents to continue safely in qBittorrent when you close SecretArea.',
+    torrentStartMinimizedTitle: 'Launch qBittorrent minimized / background',
+    torrentStartMinimizedDesc: 'Starts qBittorrent silently in the background or system tray without popping open its full window.',
+    torrentAutoReconnectTitle: 'Enable automatic WebUI reconnection',
+    torrentAutoReconnectDesc: 'Uses bounded exponential backoff to wait for WebUI readiness and recover dropped local connections automatically.',
+    torrentStatusChecking: 'Checking...',
+    torrentStatusStarting: 'Starting...',
+    torrentStatusConnecting: 'Connecting...',
+    torrentStatusAuthRequired: 'Auth Required',
+    torrentStatusNotInstalled: 'Not Installed',
+    torrentStatusWebUiDisabled: 'WebUI Disabled',
+    torrentStatusFailed: 'Failed',
     replaySetupBtn: 'Welcome Setup',
     closeBehaviorTitle: 'Application Closing Behavior',
     closeBehaviorDesc: 'Choose whether clicking the window close button minimizes SecretArea to the system tray or exits completely.',
@@ -1897,6 +1947,20 @@ const EN: LauncherTranslations = {
     etaCalculating: 'Calculating...',
     torrentConnected: 'qBittorrent Connected',
     torrentDisconnected: 'qBittorrent Disconnected',
+    torrentChecking: 'Checking qBittorrent...',
+    torrentStarting: 'Starting qBittorrent in background...',
+    torrentConnecting: 'Connecting to WebUI...',
+    torrentAuthRequired: 'Authentication Required',
+    torrentNotInstalled: 'qBittorrent Not Installed',
+    torrentWebUiDisabled: 'WebUI Disabled',
+    torrentFailed: 'Connection Failed',
+    torrentReconnectBtn: 'Reconnect',
+    torrentRetryingBtn: 'Connecting...',
+    torrentStartBackgroundBtn: 'Start in Background',
+    torrentStartingBackgroundBtn: 'Starting...',
+    torrentQuitQbitBtn: 'Quit qBittorrent',
+    torrentSwitchPortBtn: 'Switch to Port',
+    torrentFixAuthBtn: 'Update Credentials',
     torrentWebPreviewStatus: 'Web Preview — Live qBittorrent sync runs in SecretArea.exe Desktop App',
     configureTorrentBtn: 'Configure qBittorrent',
     speedGraphTitle: 'Speed Activity',
@@ -3334,6 +3398,24 @@ const FR: LauncherTranslations = {
     modeWebPreviewBadge: 'Aperçu Web',
     torrentSavedToast: 'Paramètres qBittorrent enregistrés',
     torrentManageSetupBtn: 'Installer / Mettre à jour qBittorrent',
+    torrentLifecycleSectionTitle: 'Cycle de vie et arrière-plan qBittorrent',
+    torrentLifecycleNoOsAutostartNote: 'Note : le lancement automatique s’applique uniquement à l’ouverture de SecretArea ou lors d’un téléchargement — le démarrage système du PC n’est jamais activé sans votre accord.',
+    torrentLifecycleSavedToast: 'Préférence qBittorrent enregistrée',
+    torrentAutoStartTitle: 'Démarrer qBittorrent automatiquement au lancement de SecretArea',
+    torrentAutoStartDesc: 'Lance qBittorrent automatiquement s’il est installé au démarrage de SecretArea ou lors d’un torrent, sans créer de doublon.',
+    torrentKeepRunningTitle: 'Garder qBittorrent actif après la fermeture de SecretArea',
+    torrentKeepRunningDesc: 'Laisse vos téléchargements actifs se poursuivre dans qBittorrent même lorsque vous fermez SecretArea.',
+    torrentStartMinimizedTitle: 'Lancer qBittorrent réduit / en arrière-plan',
+    torrentStartMinimizedDesc: 'Démarre qBittorrent discrètement en arrière-plan ou dans la zone de notification sans ouvrir sa fenêtre.',
+    torrentAutoReconnectTitle: 'Activer la reconnexion WebUI automatique',
+    torrentAutoReconnectDesc: 'Attend que la WebUI soit prête avec délai exponentiel borné et rétablit automatiquement la connexion locale.',
+    torrentStatusChecking: 'Vérification...',
+    torrentStatusStarting: 'Démarrage...',
+    torrentStatusConnecting: 'Connexion...',
+    torrentStatusAuthRequired: 'Identifiants requis',
+    torrentStatusNotInstalled: 'Non installé',
+    torrentStatusWebUiDisabled: 'WebUI désactivée',
+    torrentStatusFailed: 'Échec',
     replaySetupBtn: 'Assistant de bienvenue',
     closeBehaviorTitle: 'Comportement à la fermeture',
     closeBehaviorDesc: 'Choisissez si le bouton de fermeture réduit SecretArea dans la zone de notification ou ferme complètement l’application.',
@@ -3494,6 +3576,20 @@ const FR: LauncherTranslations = {
     etaCalculating: 'Calcul...',
     torrentConnected: 'qBittorrent connecté',
     torrentDisconnected: 'qBittorrent déconnecté',
+    torrentChecking: 'Vérification de qBittorrent...',
+    torrentStarting: 'Démarrage de qBittorrent en arrière-plan...',
+    torrentConnecting: 'Connexion à la WebUI...',
+    torrentAuthRequired: 'Authentification requise',
+    torrentNotInstalled: 'qBittorrent non installé',
+    torrentWebUiDisabled: 'WebUI désactivée',
+    torrentFailed: 'Échec de connexion',
+    torrentReconnectBtn: 'Reconnecter',
+    torrentRetryingBtn: 'Connexion...',
+    torrentStartBackgroundBtn: 'Démarrer en arrière-plan',
+    torrentStartingBackgroundBtn: 'Démarrage...',
+    torrentQuitQbitBtn: 'Quitter qBittorrent',
+    torrentSwitchPortBtn: 'Passer au port',
+    torrentFixAuthBtn: 'Mettre à jour les identifiants',
     torrentWebPreviewStatus: 'Aperçu Web — La synchronisation qBittorrent nécessite SecretArea.exe',
     configureTorrentBtn: 'Configurer qBittorrent',
     speedGraphTitle: 'Courbe de vitesse',
@@ -4931,6 +5027,24 @@ const ES: LauncherTranslations = {
     modeWebPreviewBadge: 'Vista Web',
     torrentSavedToast: 'Configuración de qBittorrent guardada',
     torrentManageSetupBtn: 'Instalar / Actualizar qBittorrent',
+    torrentLifecycleSectionTitle: 'Proceso en segundo plano y ciclo de vida',
+    torrentLifecycleNoOsAutostartNote: 'Nota: el inicio automático solo aplica al abrir SecretArea o iniciar un torrent; el inicio automático del sistema operativo nunca se activa sin tu permiso.',
+    torrentLifecycleSavedToast: 'Preferencia de ciclo de vida guardada',
+    torrentAutoStartTitle: 'Iniciar qBittorrent automáticamente al abrir SecretArea',
+    torrentAutoStartDesc: 'Inicia qBittorrent automáticamente si está instalado al abrir SecretArea o añadir un torrent, reutilizando cualquier proceso activo.',
+    torrentKeepRunningTitle: 'Mantener qBittorrent ejecutándose al cerrar SecretArea',
+    torrentKeepRunningDesc: 'Permite que las descargas activas continúen en segundo plano cuando cierres SecretArea.',
+    torrentStartMinimizedTitle: 'Iniciar qBittorrent minimizado / en segundo plano',
+    torrentStartMinimizedDesc: 'Abre qBittorrent silenciosamente en segundo plano o en la bandeja del sistema sin mostrar su ventana completa.',
+    torrentAutoReconnectTitle: 'Activar reconexión automática a la WebUI',
+    torrentAutoReconnectDesc: 'Espera a que la WebUI esté lista con retroceso exponencial acotado y recupera conexiones locales caídas.',
+    torrentStatusChecking: 'Comprobando...',
+    torrentStatusStarting: 'Iniciando...',
+    torrentStatusConnecting: 'Conectando...',
+    torrentStatusAuthRequired: 'Requiere acceso',
+    torrentStatusNotInstalled: 'No instalado',
+    torrentStatusWebUiDisabled: 'WebUI desactivada',
+    torrentStatusFailed: 'Error',
     replaySetupBtn: 'Asistente inicial',
     closeBehaviorTitle: 'Comportamiento al cerrar',
     closeBehaviorDesc: 'Elige si al cerrar la ventana SecretArea se minimiza a la bandeja del sistema o se cierra por completo.',
@@ -5091,6 +5205,20 @@ const ES: LauncherTranslations = {
     etaCalculating: 'Calculando...',
     torrentConnected: 'qBittorrent conectado',
     torrentDisconnected: 'qBittorrent desconectado',
+    torrentChecking: 'Comprobando qBittorrent...',
+    torrentStarting: 'Iniciando qBittorrent en segundo plano...',
+    torrentConnecting: 'Conectando a la WebUI...',
+    torrentAuthRequired: 'Autenticación requerida',
+    torrentNotInstalled: 'qBittorrent no instalado',
+    torrentWebUiDisabled: 'WebUI desactivada',
+    torrentFailed: 'Error de conexión',
+    torrentReconnectBtn: 'Reconectar',
+    torrentRetryingBtn: 'Conectando...',
+    torrentStartBackgroundBtn: 'Iniciar en segundo plano',
+    torrentStartingBackgroundBtn: 'Iniciando...',
+    torrentQuitQbitBtn: 'Cerrar qBittorrent',
+    torrentSwitchPortBtn: 'Cambiar al puerto',
+    torrentFixAuthBtn: 'Actualizar credenciales',
     torrentWebPreviewStatus: 'Vista web — La sincronización con qBittorrent requiere SecretArea.exe',
     configureTorrentBtn: 'Configurar qBittorrent',
     speedGraphTitle: 'Gráfico de velocidad',
@@ -6528,6 +6656,24 @@ const AR: LauncherTranslations = {
     modeWebPreviewBadge: 'معاينة الويب',
     torrentSavedToast: 'تم حفظ إعدادات qBittorrent',
     torrentManageSetupBtn: 'تثبيت / تحديث qBittorrent تلقائياً',
+    torrentLifecycleSectionTitle: 'إعدادات التشغيل في الخلفية ودورة الحياة',
+    torrentLifecycleNoOsAutostartNote: 'ملاحظة: التشغيل التلقائي لـ qBittorrent يتم فقط عند تشغيل SecretArea أو بدء ملف تورنت — لا يتم تفعيل بدء التشغيل مع نظام الويندوز/النظام أبداً دون موافقتك.',
+    torrentLifecycleSavedToast: 'تم حفظ إعدادات تشغيل qBittorrent',
+    torrentAutoStartTitle: 'تشغيل qBittorrent تلقائياً عند فتح SecretArea',
+    torrentAutoStartDesc: 'يشغّل qBittorrent تلقائياً إذا كان مثبّتاً عند تشغيل SecretArea أو إضافة تورنت، مع إعادة استخدام أي عملية قيد التشغيل بالفعل.',
+    torrentKeepRunningTitle: 'إبقاء qBittorrent قيد التشغيل بعد إغلاق SecretArea',
+    torrentKeepRunningDesc: 'يتيح استمرار التنزيلات النشطة بأمان في الخلفية عند إغلاق نافذة SecretArea.',
+    torrentStartMinimizedTitle: 'تشغيل qBittorrent مصغّراً / في الخلفية',
+    torrentStartMinimizedDesc: 'يبدأ qBittorrent بصمت في الخلفية أو شريط النظام دون فتح نافذته الكاملة.',
+    torrentAutoReconnectTitle: 'تفعيل إعادة الاتصال التلقائي بواجهة WebUI',
+    torrentAutoReconnectDesc: 'ينتظر جاهزية WebUI بتأخير تصاعدي محدود ويعيد الاتصال المحلي تلقائياً عند الانقطاع.',
+    torrentStatusChecking: 'جارٍ التحقق...',
+    torrentStatusStarting: 'جارٍ التشغيل...',
+    torrentStatusConnecting: 'جارٍ الاتصال...',
+    torrentStatusAuthRequired: 'مطلوب مصادقة',
+    torrentStatusNotInstalled: 'غير مثبّت',
+    torrentStatusWebUiDisabled: 'WebUI معطّلة',
+    torrentStatusFailed: 'فشل الاتصال',
     replaySetupBtn: 'إعداد الترحيب',
     closeBehaviorTitle: 'سلوك إغلاق التطبيق',
     closeBehaviorDesc: 'اختر ما إذا كان إغلاق النافذة يصغّر SecretArea إلى شريط النظام (Tray) أو يغلق التطبيق بالكامل.',
@@ -6688,6 +6834,20 @@ const AR: LauncherTranslations = {
     etaCalculating: 'جارٍ الحساب...',
     torrentConnected: 'qBittorrent متصل',
     torrentDisconnected: 'qBittorrent غير متصل',
+    torrentChecking: 'جارٍ التحقق من qBittorrent...',
+    torrentStarting: 'جارٍ تشغيل qBittorrent في الخلفية...',
+    torrentConnecting: 'جارٍ الاتصال بواجهة WebUI...',
+    torrentAuthRequired: 'مطلوب مصادقة',
+    torrentNotInstalled: 'qBittorrent غير مثبّت',
+    torrentWebUiDisabled: 'واجهة WebUI معطّلة',
+    torrentFailed: 'فشل الاتصال',
+    torrentReconnectBtn: 'إعادة الاتصال',
+    torrentRetryingBtn: 'جارٍ الاتصال...',
+    torrentStartBackgroundBtn: 'تشغيل في الخلفية',
+    torrentStartingBackgroundBtn: 'جارٍ التشغيل...',
+    torrentQuitQbitBtn: 'إنهاء qBittorrent',
+    torrentSwitchPortBtn: 'التبديل إلى المنفذ',
+    torrentFixAuthBtn: 'تحديث بيانات الدخول',
     torrentWebPreviewStatus: 'معاينة الويب — المزامنة المباشرة لـ qBittorrent تعمل في SecretArea.exe',
     configureTorrentBtn: 'إعداد qBittorrent',
     speedGraphTitle: 'مخطط سرعة التحميل والرفع',

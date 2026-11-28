@@ -24,9 +24,12 @@ import {
   Magnet,
   MagnifyingGlass,
   PlugsConnected,
+  Play,
+  Power,
   ShieldCheck,
   SlidersHorizontal,
   Sparkle,
+  SpinnerGap,
   Trash,
   WarningCircle,
   Wrench,
@@ -40,6 +43,9 @@ import type {
   OpenSourceToolsManagerState,
   PresentMonSetupState,
   PrimarySection,
+  QbitConnectionDetail,
+  QbitConnectionState,
+  QbitLifecyclePreferences,
   QbitSetupState,
   TorrentConnectionTestResult,
   TorrentDetectionResult,
@@ -50,7 +56,11 @@ import type { AppLanguage } from '../../services/launcherSettings';
 import type { DesktopUpdateState } from '../../services/desktopUpdater';
 import type { DealsCredentialsStatus, OptionalCredentialProviderId } from '../../deals/types';
 import { getTranslations } from '../../i18n/translations';
-import { DEFAULT_TORRENT_CONFIG, isLoopbackHost } from '../../services/downloadManager';
+import {
+  DEFAULT_QBIT_LIFECYCLE_PREFS,
+  DEFAULT_TORRENT_CONFIG,
+  isLoopbackHost,
+} from '../../services/downloadManager';
 import {
   formatStorageBytes,
   getDesktopHardwareIntelligenceBridge,
@@ -90,11 +100,19 @@ export interface ToolsHubSectionProps {
   torrentVersion?: string | null;
   torrentWebApiVersion?: string | null;
   torrentError?: string | null;
+  torrentConnectionState?: QbitConnectionState;
+  torrentConnectionDetail?: QbitConnectionDetail;
+  qbitLifecyclePrefs?: QbitLifecyclePreferences;
   onDetectTorrentClient?: () => Promise<TorrentDetectionResult | null>;
   onSaveTorrentConfig?: (cfg: Partial<TorrentIntegrationConfig>) => Promise<void>;
   onTestTorrentConnection?: (
     cfg?: Partial<TorrentIntegrationConfig>
   ) => Promise<TorrentConnectionTestResult | null>;
+  onReconnectTorrent?: () => Promise<void>;
+  onStartQbitBackground?: () => Promise<void>;
+  onQuitQbit?: () => Promise<void>;
+  onApplyDetectedPort?: (port: number) => Promise<void>;
+  onSaveQbitLifecyclePrefs?: (prefs: Partial<QbitLifecyclePreferences>) => Promise<void>;
   qbitSetupState?: QbitSetupState;
   onOpenQbitSetupWizard?: () => void;
   presentMonSetupState?: PresentMonSetupState;
@@ -183,9 +201,17 @@ export function ToolsHubSection({
   torrentVersion = null,
   torrentWebApiVersion = null,
   torrentError = null,
+  torrentConnectionState,
+  torrentConnectionDetail,
+  qbitLifecyclePrefs = DEFAULT_QBIT_LIFECYCLE_PREFS,
   onDetectTorrentClient,
   onSaveTorrentConfig,
   onTestTorrentConnection,
+  onReconnectTorrent,
+  onStartQbitBackground,
+  onQuitQbit,
+  onApplyDetectedPort,
+  onSaveQbitLifecyclePrefs,
   qbitSetupState,
   onOpenQbitSetupWizard,
   presentMonSetupState,
@@ -208,6 +234,7 @@ export function ToolsHubSection({
 }: ToolsHubSectionProps) {
   const tr = getTranslations(language);
   const t = tr.settings;
+  const td = tr.downloads;
   const th = tr.settingsHub;
   const tp = tr.presentMonSetup;
   const thw = tr.hardware;
@@ -583,19 +610,45 @@ export function ToolsHubSection({
     hasInlineConfig: boolean;
   }
 
+  const effectiveQbitState: QbitConnectionState = !isDesktopApp
+    ? 'idle'
+    : torrentConnectionState || (torrentConnected ? 'connected' : torrentConfig.enabled ? 'failed' : 'idle');
+
   const tools: ToolDescriptor[] = useMemo(() => {
     const qbitStatus: ToolDescriptor['statusTone'] = !isDesktopApp
       ? 'standby'
-      : isVerifiedTorrentConnected
+      : isVerifiedTorrentConnected || effectiveQbitState === 'connected'
       ? 'ready'
-      : torrentConfig.enabled
+      : effectiveQbitState === 'checking' ||
+        effectiveQbitState === 'starting' ||
+        effectiveQbitState === 'connecting'
+      ? 'builtin'
+      : effectiveQbitState === 'auth_required' ||
+        effectiveQbitState === 'webui_disabled' ||
+        effectiveQbitState === 'failed'
+      ? 'attention'
+      : torrentConfig.enabled && effectiveQbitState !== 'not_installed'
       ? 'attention'
       : 'standby';
 
     const qbitStatusLabel = !isDesktopApp
       ? t.modeWebPreviewBadge
-      : isVerifiedTorrentConnected
+      : isVerifiedTorrentConnected || effectiveQbitState === 'connected'
       ? t.torrentStatusConnected
+      : effectiveQbitState === 'checking'
+      ? t.torrentStatusChecking
+      : effectiveQbitState === 'starting'
+      ? t.torrentStatusStarting
+      : effectiveQbitState === 'connecting'
+      ? t.torrentStatusConnecting
+      : effectiveQbitState === 'auth_required'
+      ? t.torrentStatusAuthRequired
+      : effectiveQbitState === 'not_installed'
+      ? t.torrentStatusNotInstalled
+      : effectiveQbitState === 'webui_disabled'
+      ? t.torrentStatusWebUiDisabled
+      : effectiveQbitState === 'failed'
+      ? t.torrentStatusFailed
       : torrentConfig.enabled
       ? t.torrentStatusDisconnected
       : th.hubStatusStandby;
@@ -791,6 +844,7 @@ export function ToolsHubSection({
   }, [
     isDesktopApp,
     isVerifiedTorrentConnected,
+    effectiveQbitState,
     torrentConfig.enabled,
     torrentConfig.host,
     torrentConfig.port,
@@ -874,14 +928,75 @@ export function ToolsHubSection({
               <p className="text-[12px] text-slate-600 dark:text-[#8b9bb4]">
                 {t.torrentEnableDesc}
               </p>
-              {isDesktopApp && torrentConfig.enabled && torrentError && !torrentConnected && (
-                <p className="text-[11.5px] font-medium text-amber-700 dark:text-amber-300">
-                  {torrentError}
-                </p>
+              {isDesktopApp && torrentConfig.enabled && !torrentConnected && (
+                <div className="space-y-0.5 pt-1">
+                  {torrentError && (
+                    <p className="text-[11.5px] font-medium text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+                      {(effectiveQbitState === 'checking' ||
+                        effectiveQbitState === 'starting' ||
+                        effectiveQbitState === 'connecting') && (
+                        <SpinnerGap className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      )}
+                      <span>{torrentError}</span>
+                    </p>
+                  )}
+                  {torrentConnectionDetail?.hint && (
+                    <p className="text-[11.5px] text-slate-500 dark:text-[#8b9bb4]">
+                      {torrentConnectionDetail.hint}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
 
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {isDesktopApp &&
+                torrentConnectionDetail?.reasonCode === 'port_mismatch' &&
+                torrentConnectionDetail.detectedConfigPort &&
+                onApplyDetectedPort && (
+                  <button
+                    type="button"
+                    onClick={() => void onApplyDetectedPort(torrentConnectionDetail.detectedConfigPort!)}
+                    className="sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <PlugsConnected className="w-3.5 h-3.5" />
+                    <span>
+                      {td.torrentSwitchPortBtn} {torrentConnectionDetail.detectedConfigPort}
+                    </span>
+                  </button>
+                )}
+
+              {isDesktopApp &&
+                !torrentConnected &&
+                effectiveQbitState !== 'not_installed' &&
+                effectiveQbitState !== 'checking' &&
+                effectiveQbitState !== 'starting' &&
+                effectiveQbitState !== 'connecting' &&
+                !torrentConnectionDetail?.processRunning &&
+                onStartQbitBackground && (
+                  <button
+                    type="button"
+                    onClick={() => void onStartQbitBackground()}
+                    className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <Play weight="fill" className="w-3.5 h-3.5 text-emerald-600 dark:text-[#4ade80]" />
+                    <span>{td.torrentStartBackgroundBtn}</span>
+                  </button>
+                )}
+
+              {isDesktopApp &&
+                (torrentConnected || torrentConnectionDetail?.processRunning) &&
+                onQuitQbit && (
+                  <button
+                    type="button"
+                    onClick={() => void onQuitQbit()}
+                    className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <Power className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                    <span>{td.torrentQuitQbitBtn}</span>
+                  </button>
+                )}
+
               {onOpenQbitSetupWizard && (
                 <button
                   type="button"
@@ -900,6 +1015,93 @@ export function ToolsHubSection({
                 onChange={handleToggleTorrentEnabled}
               />
             </div>
+          </div>
+
+          {/* Background Process & Lifecycle Preferences */}
+          <div className="p-3.5 rounded-xl bg-slate-50/85 dark:bg-[#10151c] border border-slate-200 dark:border-white/[0.07] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-[12.5px] font-bold text-slate-900 dark:text-white">
+                {t.torrentLifecycleSectionTitle}
+              </h4>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-white dark:bg-[#151b23] border border-slate-200/80 dark:border-white/[0.06]">
+                <div className="space-y-0.5 min-w-0">
+                  <span id="qbit-pref-autostart" className="block text-[12px] font-semibold text-slate-900 dark:text-white">
+                    {t.torrentAutoStartTitle}
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-[#8b9bb4] leading-snug">
+                    {t.torrentAutoStartDesc}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={qbitLifecyclePrefs.autoStartQbit}
+                  labelId="qbit-pref-autostart"
+                  onLabel={t.activeLabel}
+                  offLabel={t.inactiveLabel}
+                  onChange={(nextVal) => void onSaveQbitLifecyclePrefs?.({ autoStartQbit: nextVal })}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-white dark:bg-[#151b23] border border-slate-200/80 dark:border-white/[0.06]">
+                <div className="space-y-0.5 min-w-0">
+                  <span id="qbit-pref-keeprunning" className="block text-[12px] font-semibold text-slate-900 dark:text-white">
+                    {t.torrentKeepRunningTitle}
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-[#8b9bb4] leading-snug">
+                    {t.torrentKeepRunningDesc}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={qbitLifecyclePrefs.keepQbitRunningOnClose}
+                  labelId="qbit-pref-keeprunning"
+                  onLabel={t.activeLabel}
+                  offLabel={t.inactiveLabel}
+                  onChange={(nextVal) => void onSaveQbitLifecyclePrefs?.({ keepQbitRunningOnClose: nextVal })}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-white dark:bg-[#151b23] border border-slate-200/80 dark:border-white/[0.06]">
+                <div className="space-y-0.5 min-w-0">
+                  <span id="qbit-pref-minimized" className="block text-[12px] font-semibold text-slate-900 dark:text-white">
+                    {t.torrentStartMinimizedTitle}
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-[#8b9bb4] leading-snug">
+                    {t.torrentStartMinimizedDesc}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={qbitLifecyclePrefs.launchQbitMinimized}
+                  labelId="qbit-pref-minimized"
+                  onLabel={t.activeLabel}
+                  offLabel={t.inactiveLabel}
+                  onChange={(nextVal) => void onSaveQbitLifecyclePrefs?.({ launchQbitMinimized: nextVal })}
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-3 p-2.5 rounded-lg bg-white dark:bg-[#151b23] border border-slate-200/80 dark:border-white/[0.06]">
+                <div className="space-y-0.5 min-w-0">
+                  <span id="qbit-pref-reconnect" className="block text-[12px] font-semibold text-slate-900 dark:text-white">
+                    {t.torrentAutoReconnectTitle}
+                  </span>
+                  <p className="text-[11px] text-slate-600 dark:text-[#8b9bb4] leading-snug">
+                    {t.torrentAutoReconnectDesc}
+                  </p>
+                </div>
+                <ToggleSwitch
+                  checked={qbitLifecyclePrefs.autoReconnect}
+                  labelId="qbit-pref-reconnect"
+                  onLabel={t.activeLabel}
+                  offLabel={t.inactiveLabel}
+                  onChange={(nextVal) => void onSaveQbitLifecyclePrefs?.({ autoReconnect: nextVal })}
+                />
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-500 dark:text-[#7f91a8] leading-snug">
+              {t.torrentLifecycleNoOsAutostartNote}
+            </p>
           </div>
 
           {detectionResult && (
@@ -1106,6 +1308,17 @@ export function ToolsHubSection({
             </button>
 
             <div className="flex flex-wrap items-center gap-2">
+              {isDesktopApp && onReconnectTorrent && (
+                <button
+                  type="button"
+                  onClick={() => void onReconnectTorrent()}
+                  className="sa-btn-secondary min-h-[38px] px-3 py-1.5 text-[12px]"
+                >
+                  <ArrowClockwise className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
+                  <span>{td.torrentReconnectBtn}</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 disabled={isDetectingTorrent}
@@ -2085,7 +2298,7 @@ export function ToolsHubSection({
             <Wrench className="w-4.5 h-4.5" />
           </span>
           <div className="space-y-0.5 min-w-0">
-            <h2 className="text-[15px] font-bold text-slate-900 dark:text-white tracking-tight">
+            <h2 className="text-[15.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
               {th.hubTitle}
             </h2>
             <p className="text-[12px] text-slate-600 dark:text-[#8b9bb4] leading-relaxed">
@@ -2105,10 +2318,10 @@ export function ToolsHubSection({
               type="button"
               aria-pressed={active}
               onClick={() => setFilter(tab.id)}
-              className={`px-3 py-1.5 text-[12px] ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold cursor-pointer ${
                 active
                   ? 'sa-btn-primary shadow-xs'
-                  : 'inline-flex items-center gap-1.5 rounded-[var(--sa-btn-radius)] text-slate-600 dark:text-[#8b9bb4] hover:text-slate-900 dark:hover:text-white font-semibold cursor-pointer transition-colors'
+                  : 'rounded-[var(--sa-btn-radius)] text-slate-600 dark:text-[#8b9bb4] hover:text-slate-900 dark:hover:text-white transition-colors'
               }`}
             >
               <span>{tab.label}</span>

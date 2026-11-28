@@ -104,6 +104,7 @@ export function QbitSetupWizardModal({
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState(false);
   const [isVerifyingWebUi, setIsVerifyingWebUi] = useState(false);
+  const [isLaunchingClient, setIsLaunchingClient] = useState(false);
   const [webUiTestResult, setWebUiTestResult] = useState<TorrentConnectionTestResult | null>(null);
 
   useEffect(() => {
@@ -202,6 +203,16 @@ export function QbitSetupWizardModal({
     }
   };
 
+  const handleLaunch = async () => {
+    if (isLaunchingClient) return;
+    setIsLaunchingClient(true);
+    try {
+      await onLaunchClient();
+    } finally {
+      setIsLaunchingClient(false);
+    }
+  };
+
   const handleSkipOrClose = () => {
     if (isBusy) return;
     if (!setupState.installed && !setupState.firstLaunchDismissed) {
@@ -231,13 +242,13 @@ export function QbitSetupWizardModal({
                   className="w-full h-full object-contain"
                 />
               ) : (
-                <Magnet weight="duotone" className="w-6 h-6 text-[var(--sa-accent)]" />
+                <Magnet className="w-5.5 h-5.5 text-[var(--sa-accent)]" />
               )}
             </div>
             <div className="min-w-0">
               <h2
                 id="qbit-setup-modal-title"
-                className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate"
+                className="font-display text-base sm:text-lg font-semibold tracking-normal text-slate-900 dark:text-white truncate"
               >
                 {t.modalTitle}
               </h2>
@@ -476,10 +487,15 @@ export function QbitSetupWizardModal({
                 </h3>
                 <button
                   type="button"
-                  onClick={onLaunchClient}
-                  className="sa-btn-secondary inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 text-[12px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
+                  disabled={isLaunchingClient}
+                  onClick={() => void handleLaunch()}
+                  className="sa-btn-secondary inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 disabled:opacity-60 text-[12px] font-semibold whitespace-nowrap shrink-0 cursor-pointer"
                 >
-                  <Play weight="fill" className="w-3.5 h-3.5 text-emerald-600 dark:text-[#4ade80]" />
+                  {isLaunchingClient ? (
+                    <SpinnerGap className="w-3.5 h-3.5 animate-spin text-[var(--sa-accent)]" />
+                  ) : (
+                    <Play weight="fill" className="w-3.5 h-3.5 text-emerald-600 dark:text-[#4ade80]" />
+                  )}
                   <span>{t.launchQbitBtn}</span>
                 </button>
               </div>

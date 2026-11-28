@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld('secretAreaDesktop', {
   },
   appearance: {
     getSystemAppearance: () => ipcRenderer.invoke('appearance:get-system'),
+    setWindowTheme: (payload) => ipcRenderer.invoke('appearance:set-window-theme', payload),
     onSystemAppearanceChange: (callback) => {
       if (typeof callback !== 'function') {
         return () => {};
@@ -94,6 +95,11 @@ contextBridge.exposeInMainWorld('secretAreaDesktop', {
     detectTorrentClient: () => ipcRenderer.invoke('downloads:detect-torrent'),
     saveTorrentConfig: (cfg) => ipcRenderer.invoke('downloads:save-torrent-config', cfg),
     testTorrentConnection: (cfg) => ipcRenderer.invoke('downloads:test-torrent-connection', cfg),
+    reconnectTorrent: () => ipcRenderer.invoke('downloads:reconnect-torrent'),
+    startQbitBackground: () => ipcRenderer.invoke('downloads:start-qbit-background'),
+    quitQbit: () => ipcRenderer.invoke('downloads:quit-qbit'),
+    applyDetectedPort: (port) => ipcRenderer.invoke('downloads:apply-detected-port', port),
+    saveQbitLifecyclePrefs: (prefs) => ipcRenderer.invoke('downloads:save-qbit-lifecycle-prefs', prefs),
     onUpdated: (callback) => {
       if (typeof callback !== 'function') {
         return () => {};

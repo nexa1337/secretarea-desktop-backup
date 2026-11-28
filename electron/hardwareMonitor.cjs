@@ -1560,7 +1560,7 @@ function createHardwareMonitor({ getMainWindow, onSnapshot, getLhmLibraryInfo } 
           isDarwin ? si.networkStats('*').catch(() => []) : Promise.resolve([]),
         ]);
       }
-      await new Promise((r) => setTimeout(r, 220));
+      await new Promise((r) => setTimeout(r, 90));
     }
 
     const adaptiveScale = Math.max(1, intervalMs / 1500);

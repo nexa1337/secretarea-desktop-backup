@@ -165,7 +165,6 @@ export function DesktopUpdaterModal({
                 className="flex items-start gap-2 pb-2 last:pb-0 border-b last:border-b-0 border-slate-200/70 dark:border-white/[0.06]"
               >
                 <CategoryIcon
-                  weight="duotone"
                   className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${categoryColor}`}
                 />
                 <div className="min-w-0 space-y-0.5">
@@ -397,17 +396,17 @@ export function DesktopUpdaterModal({
             <div
               className={`px-5 py-4 border-b flex items-center justify-between gap-3 shrink-0 ${
                 isPs5Theme || isXboxTheme
-                  ? 'border-white/[0.08]'
-                  : 'bg-slate-50 border-slate-200 dark:bg-transparent dark:border-white/[0.08]'
+                  ? 'border-white/[0.08] bg-white/[0.03]'
+                  : 'bg-slate-50 border-slate-200 dark:bg-[#11161e] dark:border-white/[0.08]'
               }`}
             >
-              <div className="flex items-center gap-2.5">
-                <div className="sa-icon-badge w-8 h-8">
-                  <Info className="w-4 h-4" />
+              <div className="flex items-center gap-3">
+                <div className="sa-icon-badge w-9 h-9">
+                  <Info className="w-[18px] h-[18px]" />
                 </div>
                 <div>
                   <h2
-                    className={`text-[15px] font-bold leading-tight ${
+                    className={`text-[15.5px] font-semibold tracking-normal leading-snug ${
                       isPs5Theme || isXboxTheme
                         ? 'text-white'
                         : 'text-slate-900 dark:text-white'

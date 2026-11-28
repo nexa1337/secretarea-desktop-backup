@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AppWindow,
   ArrowCounterClockwise,
@@ -14,7 +14,6 @@ import {
   CursorClick,
   Database,
   DownloadSimple,
-  Export,
   FloppyDisk,
   FolderOpen,
   Gauge,
@@ -35,7 +34,6 @@ import {
   SpeakerSlash,
   Sun,
   Swatches,
-  UploadSimple,
   Wrench,
   X,
 } from '@phosphor-icons/react';
@@ -59,6 +57,9 @@ import type {
   PerformanceMode,
   PresentMonSetupState,
   PrimarySection,
+  QbitConnectionDetail,
+  QbitConnectionState,
+  QbitLifecyclePreferences,
   QbitSetupState,
   TorrentConnectionTestResult,
   TorrentDetectionResult,
@@ -101,6 +102,9 @@ interface SettingsViewProps {
   torrentVersion?: string | null;
   torrentWebApiVersion?: string | null;
   torrentError?: string | null;
+  torrentConnectionState?: QbitConnectionState;
+  torrentConnectionDetail?: QbitConnectionDetail;
+  qbitLifecyclePrefs?: QbitLifecyclePreferences;
   onChangeLanguage: (language: AppLanguage) => void;
   onToggleStartWithComputer: (enabled: boolean) => void;
   onChangeCloseBehavior?: (behavior: CloseBehaviorMode) => void;
@@ -133,6 +137,11 @@ interface SettingsViewProps {
   onTestTorrentConnection?: (
     cfg?: Partial<TorrentIntegrationConfig>
   ) => Promise<TorrentConnectionTestResult | null>;
+  onReconnectTorrent?: () => Promise<void>;
+  onStartQbitBackground?: () => Promise<void>;
+  onQuitQbit?: () => Promise<void>;
+  onApplyDetectedPort?: (port: number) => Promise<void>;
+  onSaveQbitLifecyclePrefs?: (prefs: Partial<QbitLifecyclePreferences>) => Promise<void>;
   qbitSetupState?: QbitSetupState;
   onOpenQbitSetupWizard?: () => void;
   presentMonSetupState?: PresentMonSetupState;
@@ -160,7 +169,6 @@ interface SettingsViewProps {
   onOpenSpinWheel?: () => void;
   onOpenHypervisorGuide?: () => void;
   onNavigateSection?: (section: PrimarySection) => void;
-  onImportSettings?: (imported: Partial<LauncherSettings>) => Promise<void> | void;
   onNotify?: (message: string, type?: 'success' | 'info' | 'error') => void;
   focusToolRequest?: { toolId: string; nonce: number } | null;
 }
@@ -245,6 +253,9 @@ export function SettingsView({
   torrentVersion = null,
   torrentWebApiVersion = null,
   torrentError = null,
+  torrentConnectionState,
+  torrentConnectionDetail,
+  qbitLifecyclePrefs,
   onChangeLanguage,
   onToggleStartWithComputer,
   onChangeCloseBehavior,
@@ -275,6 +286,11 @@ export function SettingsView({
   onDetectTorrentClient,
   onSaveTorrentConfig,
   onTestTorrentConnection,
+  onReconnectTorrent,
+  onStartQbitBackground,
+  onQuitQbit,
+  onApplyDetectedPort,
+  onSaveQbitLifecyclePrefs,
   qbitSetupState,
   onOpenQbitSetupWizard,
   presentMonSetupState,
@@ -298,7 +314,6 @@ export function SettingsView({
   onOpenSpinWheel,
   onOpenHypervisorGuide,
   onNavigateSection,
-  onImportSettings,
   onNotify,
   focusToolRequest = null,
 }: SettingsViewProps) {
@@ -325,7 +340,6 @@ export function SettingsView({
   const [isSamplingPerf, setIsSamplingPerf] = useState(false);
   const [lhmInstalledReady, setLhmInstalledReady] = useState(false);
   const [clearingImageCache, setClearingImageCache] = useState(false);
-  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!focusToolRequest?.toolId) return;
@@ -398,55 +412,6 @@ export function SettingsView({
   useEffect(() => {
     void sampleRuntimeFootprint();
   }, [sampleRuntimeFootprint]);
-
-  const handleExportSettings = () => {
-    try {
-      const payload = {
-        app: 'SecretArea',
-        version: currentVersion,
-        exportedAt: new Date().toISOString(),
-        settings,
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-        type: 'application/json',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `secretarea-settings-v${currentVersion}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch {
-      onNotify?.(th.importSettingsError, 'error');
-    }
-  };
-
-  const handleImportFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as {
-        settings?: Partial<LauncherSettings>;
-      } & Partial<LauncherSettings>;
-      const candidate =
-        parsed && typeof parsed === 'object' && parsed.settings && typeof parsed.settings === 'object'
-          ? parsed.settings
-          : parsed;
-      if (!candidate || typeof candidate !== 'object') {
-        throw new Error('Invalid settings payload');
-      }
-      if (onImportSettings) {
-        await onImportSettings(candidate);
-      }
-      onNotify?.(th.importSettingsSuccess, 'success');
-    } catch {
-      onNotify?.(th.importSettingsError, 'error');
-    }
-  };
 
   const handleClearDealsCache = () => {
     clearDealsMemoryCache();
@@ -636,9 +601,7 @@ export function SettingsView({
         th.cacheSectionDesc,
         th.clearDealsCacheBtn,
         th.clearImageCacheBtn,
-        th.exportSettingsBtn,
-        th.importSettingsBtn,
-        'download folder path disk space free storage cache artwork images deals backup export import json',
+        'download folder path disk space free storage cache artwork images deals',
       ]
         .join(' ')
         .toLowerCase(),
@@ -716,22 +679,13 @@ export function SettingsView({
 
   return (
     <div className="flex-1 min-w-0 h-full overflow-y-auto bg-gradient-to-b from-slate-50 via-[#f4f6f9] to-slate-100 dark:from-[#1d2633] dark:via-[#171d26] dark:to-[#12161d]">
-      <input
-        ref={importInputRef}
-        type="file"
-        accept=".json,application/json"
-        onChange={handleImportFileChange}
-        className="hidden"
-        aria-hidden="true"
-      />
-
       <div className="max-w-6xl mx-auto px-3.5 sm:px-6 lg:px-8 py-5 sm:py-7 space-y-5">
         {/* Top Command Header */}
         <header className="space-y-4 pb-4 border-b border-slate-200 dark:border-white/[0.08]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2.5">
-                <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+                <h1 className="font-display text-lg sm:text-xl font-semibold tracking-normal text-slate-900 dark:text-white">
                   {t.pageTitle}
                 </h1>
                 <span
@@ -747,26 +701,6 @@ export function SettingsView({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={handleExportSettings}
-                className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
-              >
-                <Export className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
-                <span>{th.exportSettingsBtn}</span>
-              </button>
-
-              {onImportSettings && (
-                <button
-                  type="button"
-                  onClick={() => importInputRef.current?.click()}
-                  className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
-                >
-                  <UploadSimple className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
-                  <span>{th.importSettingsBtn}</span>
-                </button>
-              )}
-
               {!isDesktopApp && onReplayOnboarding && (
                 <button
                   type="button"
@@ -937,7 +871,7 @@ export function SettingsView({
         {!normalizedSearch && (
           <nav
             aria-label="Settings Categories"
-            className="lg:hidden flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin"
+            className="lg:hidden flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar"
           >
             {categoryItems.map((cat) => {
               const Icon = cat.icon;
@@ -947,16 +881,16 @@ export function SettingsView({
                   key={cat.id}
                   type="button"
                   onClick={() => setActiveCategory(cat.id)}
-                  className={`px-3 py-2 text-[12px] ${
+                  className={`px-3.5 py-2 text-[12.5px] font-semibold whitespace-nowrap shrink-0 ${
                     active ? 'sa-btn-primary' : 'sa-btn-secondary'
                   }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-4 h-4 shrink-0" />
                   <span>{cat.label}</span>
                   {cat.badge && (
                     <span
                       dir="ltr"
-                      className={`font-mono-tabular text-[11px] ${
+                      className={`font-mono-tabular text-[11px] shrink-0 ${
                         active ? 'opacity-90' : 'text-slate-400 dark:text-[#7f91ab]'
                       }`}
                     >
@@ -1055,9 +989,17 @@ export function SettingsView({
                 torrentVersion={torrentVersion}
                 torrentWebApiVersion={torrentWebApiVersion}
                 torrentError={torrentError}
+                torrentConnectionState={torrentConnectionState}
+                torrentConnectionDetail={torrentConnectionDetail}
+                qbitLifecyclePrefs={qbitLifecyclePrefs}
                 onDetectTorrentClient={onDetectTorrentClient}
                 onSaveTorrentConfig={onSaveTorrentConfig}
                 onTestTorrentConnection={onTestTorrentConnection}
+                onReconnectTorrent={onReconnectTorrent}
+                onStartQbitBackground={onStartQbitBackground}
+                onQuitQbit={onQuitQbit}
+                onApplyDetectedPort={onApplyDetectedPort}
+                onSaveQbitLifecyclePrefs={onSaveQbitLifecyclePrefs}
                 qbitSetupState={qbitSetupState}
                 onOpenQbitSetupWizard={onOpenQbitSetupWizard}
                 presentMonSetupState={presentMonSetupState}
@@ -1089,7 +1031,7 @@ export function SettingsView({
                       <Globe className="w-4.5 h-4.5" />
                     </span>
                     <div className="space-y-0.5">
-                      <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                      <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                         {t.languageSectionTitle}
                       </h2>
                       <p className="text-[12px] text-slate-600 dark:text-[#8b9bb4]">
@@ -1163,7 +1105,7 @@ export function SettingsView({
               <section className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 space-y-3.5 shadow-sm dark:shadow-lg">
                 <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-200 dark:border-white/[0.06]">
                   <Power className="w-4 h-4 text-[#0284c7] dark:text-[#66c0f4] shrink-0" />
-                  <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                     {t.startingSectionTitle}
                   </h2>
                 </div>
@@ -1342,7 +1284,7 @@ export function SettingsView({
                   <span className="sa-icon-badge w-8 h-8 flex items-center justify-center shrink-0">
                     <Swatches className="w-4 h-4" />
                   </span>
-                  <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                     {t.windowSectionTitle}
                   </h2>
                 </div>
@@ -1714,7 +1656,7 @@ export function SettingsView({
                   <div className="flex items-start gap-2.5">
                     <SpeakerHigh className="w-4 h-4 text-[#0284c7] dark:text-[#66c0f4] shrink-0 mt-0.5" />
                     <div className="space-y-0.5">
-                      <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                      <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                         {t.audioSectionTitle}
                       </h2>
                       <p className="text-[12px] text-slate-600 dark:text-[#8b9bb4]">
@@ -1879,7 +1821,7 @@ export function SettingsView({
                     </span>
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                        <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                           {tPerf.sectionTitle}
                         </h2>
                         <span className="text-[11.5px] font-semibold text-emerald-700 dark:text-[#4ade80]">
@@ -2337,7 +2279,7 @@ export function SettingsView({
               <section className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 space-y-3.5 shadow-sm dark:shadow-lg">
                 <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-200 dark:border-white/[0.06]">
                   <FolderOpen className="w-4 h-4 text-[#0284c7] dark:text-[#66c0f4] shrink-0" />
-                  <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                  <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                     {t.downloadSectionTitle}
                   </h2>
                 </div>
@@ -2413,7 +2355,7 @@ export function SettingsView({
                   )}
                 </div>
 
-                {/* Cache Maintenance & Portable Config Backup */}
+                {/* Cache Maintenance */}
                 <div className="sa-ps5-subpanel p-3.5 sm:p-4 rounded-lg bg-slate-50 dark:bg-[#12171f] border border-slate-200 dark:border-white/[0.07] space-y-3">
                   <div className="flex items-start gap-3">
                     <span className="sa-icon-badge w-8 h-8 flex items-center justify-center shrink-0 mt-0.5">
@@ -2448,26 +2390,6 @@ export function SettingsView({
                       <FloppyDisk className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
                       <span>{th.clearImageCacheBtn}</span>
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={handleExportSettings}
-                      className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
-                    >
-                      <Export className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
-                      <span>{th.exportSettingsBtn}</span>
-                    </button>
-
-                    {onImportSettings && (
-                      <button
-                        type="button"
-                        onClick={() => importInputRef.current?.click()}
-                        className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
-                      >
-                        <UploadSimple className="w-3.5 h-3.5 text-[var(--sa-accent)]" />
-                        <span>{th.importSettingsBtn}</span>
-                      </button>
-                    )}
                   </div>
                 </div>
               </section>
@@ -2483,7 +2405,7 @@ export function SettingsView({
                     </span>
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+                        <h2 className="text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
                           {tr.updateHistory.settingsCardTitle}
                         </h2>
                         <span

@@ -25,6 +25,7 @@ import type {
   PerformanceMode,
   PresentMonSetupState,
   PrimarySection,
+  QbitLifecyclePreferences,
   QbitSetupState,
   SheetCatalogData,
   SortOption,
@@ -151,13 +152,8 @@ import {
   getLastSeenAppVersion,
   isLocalOnboardingCompleted,
   loadLauncherSettings,
-  normalizeAnimationMode,
-  normalizeAppearanceMode,
-  normalizeCustomTheme,
-  normalizeOsThemePreference,
-  normalizePerformanceAdvanced,
-  normalizePerformanceMode,
   resolveActiveOsTheme,
+  resolveEffectiveLightMode,
   restoreDefaultThemeSettings,
   saveLauncherSettings,
   setLastSeenAppVersion,
@@ -258,6 +254,19 @@ function updateGameUrlParam(slug: string | null, replace = false) {
   } else {
     window.history.pushState({}, '', url.toString());
   }
+}
+
+function computeCatalogTabSignature(items: GameItem[]): string {
+  if (!items || items.length === 0) return '0';
+  let hash = items.length;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    const token = `${item.id}|${item.name}|${item.version}|${item.coverImage}|${item.mirrors?.length ?? 0}|${item.dateAdded}|${item.repackSize}|${item.category}|${item.isPinned ? 1 : 0}|${item.isFree ? 1 : 0}|${item.description?.length ?? 0}`;
+    for (let j = 0; j < token.length; j += 1) {
+      hash = ((hash << 5) - hash + token.charCodeAt(j)) | 0;
+    }
+  }
+  return `${items.length}:${hash >>> 0}`;
 }
 
 let defaultCatalogPromise: Promise<SheetCatalogData> | null = null;
@@ -730,7 +739,20 @@ export default function App() {
 
   useEffect(() => {
     applyDocumentThemeSettings(launcherSettings, systemPrefersDark, runtimePlatform);
-  }, [launcherSettings, systemPrefersDark, runtimePlatform]);
+    void appearanceBridge?.setWindowTheme?.({
+      activeTheme,
+      activeOsTheme,
+      lightMode: resolveEffectiveLightMode(launcherSettings, systemPrefersDark),
+      customEnabled: Boolean(launcherSettings.customTheme?.enabled),
+    });
+  }, [
+    launcherSettings,
+    systemPrefersDark,
+    runtimePlatform,
+    appearanceBridge,
+    activeTheme,
+    activeOsTheme,
+  ]);
 
   const effectivePerformance = useMemo(
     () => getEffectivePerformanceConfig(launcherSettings),
@@ -858,13 +880,17 @@ export default function App() {
       playCursorClickSound('soft', activeOsTheme);
     };
 
+    let lastHoverAudioAt = 0;
     const handleGlobalHover = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const now = performance.now();
+      if (now - lastHoverAudioAt < 45) return;
       const interactive = target.closest('button, a, [role="button"]');
       if (!interactive) return;
       const related = e.relatedTarget as Node | null;
       if (related && interactive.contains(related)) return;
+      lastHoverAudioAt = now;
       if (activeTheme === 'xbox') {
         playXboxHoverSound();
       } else if (activeTheme === 'ps5') {
@@ -1311,102 +1337,6 @@ export default function App() {
     notify(getTranslations(defaults.language).settings.resetToast, 'info');
   }, [notify, settingsBridge, systemPrefersDark]);
 
-  const handleImportLauncherSettings = useCallback(
-    async (raw: Partial<LauncherSettings>) => {
-      const nextLang: AppLanguage =
-        raw.language === 'fr' ||
-        raw.language === 'es' ||
-        raw.language === 'ar' ||
-        raw.language === 'en'
-          ? raw.language
-          : launcherSettings.language;
-      const nextPerfMode = normalizePerformanceMode(raw.performanceMode);
-      const nextPerfAdv = normalizePerformanceAdvanced(raw.performanceAdvanced, nextPerfMode);
-      const nextCustomTheme = normalizeCustomTheme(raw.customTheme);
-      const nextOsPref = normalizeOsThemePreference(raw.osThemePreference);
-      const nextAppearanceMode = normalizeAppearanceMode(
-        raw.appearanceMode,
-        raw.lightMode ? 'light' : 'dark'
-      );
-      const nextAnimationMode = normalizeAnimationMode(raw.animationMode);
-      const nextAlwaysXbox = Boolean(raw.alwaysXboxTheme);
-      const nextAlwaysPs5 = nextAlwaysXbox ? false : Boolean(raw.alwaysPs5Theme);
-      const nextLightMode =
-        nextAlwaysXbox || nextAlwaysPs5
-          ? false
-          : nextCustomTheme.enabled
-          ? nextCustomTheme.surfaceStyle === 'daylight'
-          : nextAppearanceMode === 'light'
-          ? true
-          : nextAppearanceMode === 'dark'
-          ? false
-          : !systemPrefersDark;
-      const nextSoundVol =
-        typeof raw.soundVolume === 'number' && Number.isFinite(raw.soundVolume)
-          ? Math.min(100, Math.max(0, Math.round(raw.soundVolume)))
-          : launcherSettings.soundVolume;
-
-      const merged: LauncherSettings = {
-        language: nextLang,
-        startWithComputer:
-          typeof raw.startWithComputer === 'boolean'
-            ? raw.startWithComputer
-            : launcherSettings.startWithComputer,
-        closeBehavior:
-          raw.closeBehavior === 'minimize-to-tray' || raw.closeBehavior === 'exit'
-            ? raw.closeBehavior
-            : launcherSettings.closeBehavior,
-        enableCanRunIt:
-          typeof raw.enableCanRunIt === 'boolean'
-            ? raw.enableCanRunIt
-            : launcherSettings.enableCanRunIt,
-        compactNavbar:
-          typeof raw.compactNavbar === 'boolean'
-            ? raw.compactNavbar
-            : launcherSettings.compactNavbar,
-        lightMode: nextLightMode,
-        osThemePreference: nextOsPref,
-        appearanceMode: nextAppearanceMode,
-        animationMode: nextAnimationMode,
-        alwaysPs5Theme: nextAlwaysPs5,
-        alwaysXboxTheme: nextAlwaysXbox,
-        ambientMusicEnabled:
-          typeof raw.ambientMusicEnabled === 'boolean'
-            ? raw.ambientMusicEnabled
-            : launcherSettings.ambientMusicEnabled,
-        uiClickSoundsEnabled:
-          typeof raw.uiClickSoundsEnabled === 'boolean'
-            ? raw.uiClickSoundsEnabled
-            : launcherSettings.uiClickSoundsEnabled,
-        customCursorEnabled:
-          typeof raw.customCursorEnabled === 'boolean'
-            ? raw.customCursorEnabled
-            : launcherSettings.customCursorEnabled,
-        soundVolume: nextSoundVol,
-        customTheme:
-          nextAlwaysXbox || nextAlwaysPs5
-            ? { ...nextCustomTheme, enabled: false }
-            : nextCustomTheme,
-        performanceMode: nextPerfMode,
-        performanceAdvanced: nextPerfAdv,
-      };
-
-      setLauncherSettings(merged);
-      if (settingsBridge) {
-        try {
-          await settingsBridge.setStartWithComputer(merged.startWithComputer);
-          await settingsBridge.setCloseBehavior?.(merged.closeBehavior);
-          await settingsBridge.setPerformanceSettings?.(
-            buildPerformancePayloadForDesktop(merged)
-          );
-        } catch {
-          // Ignore non-fatal desktop bridge sync failure cleanly
-        }
-      }
-    },
-    [launcherSettings, settingsBridge]
-  );
-
   const handleStartDownloadPayload = useCallback(
     async (payload: StartDownloadPayload) => {
       if (downloadsBridge) {
@@ -1592,6 +1522,59 @@ export default function App() {
     [downloadsBridge]
   );
 
+  const handleReconnectTorrent = useCallback(async () => {
+    if (!downloadsBridge) return;
+    const next = await downloadsBridge.reconnectTorrent().catch(() => null);
+    if (next) setDownloadSnapshot(next);
+  }, [downloadsBridge]);
+
+  const handleStartQbitBackground = useCallback(async () => {
+    if (!downloadsBridge) return;
+    const next = await downloadsBridge.startQbitBackground().catch(() => null);
+    if (next) setDownloadSnapshot(next);
+  }, [downloadsBridge]);
+
+  const handleQuitQbit = useCallback(async () => {
+    if (!downloadsBridge) return;
+    const res = await downloadsBridge.quitQbit().catch(() => null);
+    if (res?.snapshot) {
+      setDownloadSnapshot(res.snapshot);
+    } else {
+      const refreshed = await downloadsBridge.getState().catch(() => null);
+      if (refreshed) setDownloadSnapshot(refreshed);
+    }
+  }, [downloadsBridge]);
+
+  const handleApplyDetectedTorrentPort = useCallback(
+    async (port: number) => {
+      if (!downloadsBridge) return;
+      const next = await downloadsBridge.applyDetectedPort(port).catch(() => null);
+      if (next) setDownloadSnapshot(next);
+      notify(t.settings.torrentSavedToast, 'success');
+    },
+    [downloadsBridge, notify, t.settings.torrentSavedToast]
+  );
+
+  const handleSaveQbitLifecyclePrefs = useCallback(
+    async (patch: Partial<QbitLifecyclePreferences>) => {
+      if (!downloadsBridge) {
+        setDownloadSnapshot((prev) => ({
+          ...prev,
+          qbitLifecyclePrefs: {
+            ...(prev.qbitLifecyclePrefs || EMPTY_DOWNLOAD_SNAPSHOT.qbitLifecyclePrefs!),
+            ...patch,
+          },
+        }));
+        notify(t.settings.torrentLifecycleSavedToast, 'success');
+        return;
+      }
+      const next = await downloadsBridge.saveQbitLifecyclePrefs(patch).catch(() => null);
+      if (next) setDownloadSnapshot(next);
+      notify(t.settings.torrentLifecycleSavedToast, 'success');
+    },
+    [downloadsBridge, notify, t.settings.torrentLifecycleSavedToast]
+  );
+
   const handleOpenTorrentSettings = useCallback(() => {
     setActiveSection('settings');
     setSettingsFocusToolRequest({ toolId: 'qbittorrent', nonce: Date.now() });
@@ -1627,7 +1610,11 @@ export default function App() {
     if (!res?.ok && res?.error) {
       notify(res.error, 'error');
     }
-  }, [qbitSetupBridge, notify]);
+    if (downloadsBridge) {
+      const refreshed = await downloadsBridge.getState().catch(() => null);
+      if (refreshed) setDownloadSnapshot(refreshed);
+    }
+  }, [qbitSetupBridge, downloadsBridge, notify]);
 
   const handleDismissQbitSetup = useCallback(() => {
     if (!qbitSetupBridge) return;
@@ -1792,8 +1779,8 @@ export default function App() {
 
         const prevSig =
           tabSignaturesRef.current[tab] ??
-          (tabSignaturesRef.current[tab] = JSON.stringify(prev[tab] || []));
-        const nextSig = JSON.stringify(nextItems);
+          (tabSignaturesRef.current[tab] = computeCatalogTabSignature(prev[tab] || []));
+        const nextSig = computeCatalogTabSignature(nextItems);
 
         if (nextSig !== prevSig) {
           tabSignaturesRef.current[tab] = nextSig;
@@ -2602,6 +2589,10 @@ export default function App() {
               onOpenExternal={handleOpenExternalUrl}
               onOpenTorrentSettings={handleOpenTorrentSettings}
               onOpenQbitSetupWizard={handleOpenQbitSetupWizard}
+              onReconnectTorrent={handleReconnectTorrent}
+              onStartQbitBackground={handleStartQbitBackground}
+              onQuitQbit={handleQuitQbit}
+              onApplyDetectedPort={handleApplyDetectedTorrentPort}
             />
           )}
 
@@ -2628,6 +2619,9 @@ export default function App() {
               torrentVersion={downloadSnapshot.torrentVersion}
               torrentWebApiVersion={downloadSnapshot.torrentWebApiVersion}
               torrentError={downloadSnapshot.torrentError}
+              torrentConnectionState={downloadSnapshot.torrentConnectionState}
+              torrentConnectionDetail={downloadSnapshot.torrentConnectionDetail}
+              qbitLifecyclePrefs={downloadSnapshot.qbitLifecyclePrefs}
               onChangeLanguage={handleChangeLanguage}
               onToggleStartWithComputer={handleToggleStartWithComputer}
               onChangeCloseBehavior={handleChangeCloseBehavior}
@@ -2658,6 +2652,11 @@ export default function App() {
               onDetectTorrentClient={handleDetectTorrentClient}
               onSaveTorrentConfig={handleSaveTorrentConfig}
               onTestTorrentConnection={handleTestTorrentConnection}
+              onReconnectTorrent={handleReconnectTorrent}
+              onStartQbitBackground={handleStartQbitBackground}
+              onQuitQbit={handleQuitQbit}
+              onApplyDetectedPort={handleApplyDetectedTorrentPort}
+              onSaveQbitLifecyclePrefs={handleSaveQbitLifecyclePrefs}
               qbitSetupState={qbitSetupState}
               onOpenQbitSetupWizard={handleOpenQbitSetupWizard}
               presentMonSetupState={presentMonSetupState}
@@ -2681,7 +2680,6 @@ export default function App() {
               onOpenSpinWheel={handleOpenSpinWheel}
               onOpenHypervisorGuide={() => setIsHypervisorGuideOpen(true)}
               onNavigateSection={setActiveSection}
-              onImportSettings={handleImportLauncherSettings}
               onNotify={notify}
               focusToolRequest={settingsFocusToolRequest}
             />

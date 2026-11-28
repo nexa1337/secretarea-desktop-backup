@@ -165,7 +165,7 @@ export function PcCleanerPanel({ isDesktopApp, language }: PcCleanerPanelProps) 
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="sa-icon-badge w-9 h-9 flex items-center justify-center shrink-0">
-              <Sparkle weight="duotone" className="w-5 h-5" />
+              <Sparkle className="w-5 h-5" />
             </div>
             <div>
               <h2 className="font-display text-[16px] font-bold text-slate-900 dark:text-white">{t.cleanerTitle}</h2>

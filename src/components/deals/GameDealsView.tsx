@@ -810,7 +810,7 @@ export function GameDealsView({
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <Fire weight="duotone" className="w-5 h-5 text-amber-500 shrink-0" />
+                      <Fire className="w-5 h-5 text-amber-500 shrink-0" />
                       <h2 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                         {td.whatsHotTodayTitle}
                       </h2>
@@ -981,7 +981,7 @@ export function GameDealsView({
                     <div className="sa-section-header flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <span className="sa-icon-badge w-7 h-7 flex items-center justify-center shrink-0">
-                          <Sparkle weight="duotone" className="w-4 h-4" />
+                          <Sparkle className="w-4 h-4" />
                         </span>
                         <h2 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
                           {td.featuredDealsTitle}
@@ -1039,7 +1039,6 @@ export function GameDealsView({
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <span className="sa-icon-badge w-7 h-7 flex items-center justify-center shrink-0">
                           <Gift
-                            weight="duotone"
                             className="w-4 h-4 text-emerald-600 dark:text-[#4ade80]"
                           />
                         </span>
@@ -1139,7 +1138,7 @@ export function GameDealsView({
                     <div className="sa-section-header flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <span className="sa-icon-badge w-7 h-7 flex items-center justify-center shrink-0">
-                          <Flame weight="duotone" className="w-4 h-4 text-amber-500" />
+                          <Flame className="w-4 h-4 text-amber-500" />
                         </span>
                         <h2 className="font-display text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
                           {td.trendingDealsTitle}

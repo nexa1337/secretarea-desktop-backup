@@ -93,7 +93,7 @@ export function CompatibilityUpgradeAdvisorPanel({
       <ExpandablePanel
         title={t.future2030Title}
         subtitle={t.future2030Subtitle}
-        icon={<CalendarCheck weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<CalendarCheck className="w-4.5 h-4.5" />}
         rightSlot={
           <div className="flex flex-wrap items-center gap-1.5">
             {FUTURE_YEARS.map((fy) => {
@@ -185,7 +185,7 @@ export function CompatibilityUpgradeAdvisorPanel({
       <ExpandablePanel
         title={t.upgradeAdvisorTitle}
         subtitle={t.upgradeAdvisorSubtitle}
-        icon={<Lightbulb weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Lightbulb className="w-4.5 h-4.5" />}
       >
         <div className="space-y-4">
           {inventory.system.formFactor !== 'laptop' && (
@@ -270,7 +270,7 @@ export function CompatibilityUpgradeAdvisorPanel({
       <ExpandablePanel
         title={t.gamingCompatTitle}
         subtitle={t.gamingCompatSubtitle}
-        icon={<GameController weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<GameController className="w-4.5 h-4.5" />}
       >
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -359,7 +359,7 @@ export function CompatibilityUpgradeAdvisorPanel({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <ExpandablePanel
           title={t.proCompatTitle}
-          icon={<Briefcase weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Briefcase className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           <div className="space-y-2.5">
@@ -381,7 +381,7 @@ export function CompatibilityUpgradeAdvisorPanel({
         <ExpandablePanel
           title={t.maintenanceTitle}
           subtitle={t.maintenanceSafetyNote}
-          icon={<Wrench weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Wrench className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           <div className="space-y-2.5">

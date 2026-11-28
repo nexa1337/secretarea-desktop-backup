@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useState, type ComponentType } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import {
   ArrowSquareOut,
   ArrowsIn,
@@ -90,6 +90,7 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
 }) {
   const hardwareBridge = useMemo(() => getDesktopHardwareMonitorBridge(), []);
   const [liveSnapshot, setLiveSnapshot] = useState<HardwareMonitorSnapshot | null>(null);
+  const lastPushAtRef = useRef<number>(0);
   const pollIntervalMs = Math.max(2000, Math.min(30000, Number(telemetryIntervalMs) || 4000));
 
   useEffect(() => {
@@ -98,14 +99,17 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
 
     const unsubscribe = hardwareBridge.onUpdate((snap) => {
       if (active && snap) {
+        lastPushAtRef.current = Date.now();
         setLiveSnapshot(snap);
       }
     });
 
-    const fetchOnce = () => {
+    const fetchOnce = (force = false) => {
       if (!active || document.hidden || !document.hasFocus()) return;
+      if (!force && Date.now() - lastPushAtRef.current < pollIntervalMs) return;
       void hardwareBridge.getSnapshot().then((snap) => {
         if (active && snap) {
+          lastPushAtRef.current = Date.now();
           setLiveSnapshot(snap);
         }
       });
@@ -114,6 +118,7 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
     if (!document.hidden) {
       void hardwareBridge.getSnapshot().then((snap) => {
         if (active && snap) {
+          lastPushAtRef.current = Date.now();
           setLiveSnapshot(snap);
         }
       });
@@ -126,10 +131,10 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
       };
     }
 
-    const timer = window.setInterval(fetchOnce, pollIntervalMs);
+    const timer = window.setInterval(() => fetchOnce(false), pollIntervalMs);
     const handleRestore = () => {
       if (!document.hidden && document.hasFocus()) {
-        fetchOnce();
+        fetchOnce(false);
       }
     };
     document.addEventListener('visibilitychange', handleRestore);
@@ -240,14 +245,14 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
     .join(' · ') || `PC Temperature: ${formatCompactTemp(pcTemp)}`;
 
   return (
-    <button
-      type="button"
-      dir="ltr"
-      onClick={() => onSelectSection('hardware')}
-      title={label}
-      aria-label={label}
-      className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 overflow-x-auto no-scrollbar font-mono-tabular text-start cursor-pointer hover:opacity-90 transition-opacity"
-    >
+    <div dir="ltr" className="flex items-center min-w-0 flex-1 overflow-x-auto no-scrollbar">
+      <button
+        type="button"
+        onClick={() => onSelectSection('hardware')}
+        title={label}
+        aria-label={label}
+        className="inline-flex items-center gap-2 sm:gap-3 w-fit max-w-full shrink-0 font-mono-tabular text-start cursor-pointer hover:opacity-90 transition-opacity"
+      >
       {/* GPU */}
       <span
         title={gpuTooltip}
@@ -334,7 +339,8 @@ const TopHardwareTelemetryStrip = memo(function TopHardwareTelemetryStrip({
           {formatCompactTemp(pcTemp)}
         </span>
       </span>
-    </button>
+      </button>
+    </div>
   );
 });
 

@@ -30,6 +30,10 @@ if (!gotSingleInstanceLock) {
   app.quit();
 }
 
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-transparent-visuals');
+}
+
 let mainWindow = null;
 let appTray = null;
 let isQuitting = false;
@@ -741,6 +745,33 @@ function registerUpdaterIpc() {
     if (!isTrustedSender(event)) return null;
     return getSystemAppearancePayload();
   });
+
+  ipcMain.handle('appearance:set-window-theme', (event, payload) => {
+    if (!isTrustedSender(event)) return { ok: false };
+    applyWindowDesktopGlass(payload || {});
+    return { ok: true };
+  });
+}
+
+function applyWindowDesktopGlass(payload) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const activeTheme = payload && typeof payload.activeTheme === 'string' ? payload.activeTheme : 'default';
+  const activeOsTheme =
+    payload && typeof payload.activeOsTheme === 'string' ? payload.activeOsTheme : 'windows';
+  const customEnabled = Boolean(payload && payload.customEnabled);
+  const lightMode = Boolean(payload && payload.lightMode);
+  const wantsDesktopGlass =
+    !customEnabled &&
+    activeTheme === 'default' &&
+    (activeOsTheme === 'linux' || activeOsTheme === 'macos');
+
+  if (process.platform === 'darwin') {
+    try {
+      mainWindow.setVibrancy(wantsDesktopGlass ? (lightMode ? 'under-window' : 'hud') : null);
+    } catch {
+      // Ignore macOS vibrancy unsupported fallback cleanly
+    }
+  }
 }
 
 function getSystemAppearancePayload() {
@@ -1691,6 +1722,7 @@ function parseSafeExternalUrl(targetUrl) {
 
 function createWindow(options = {}) {
   const startHidden = Boolean(options.startHidden);
+  const isTransparentOsPlatform = process.platform === 'linux' || process.platform === 'darwin';
   mainWindow = new BrowserWindow({
     width: 1360,
     height: 860,
@@ -1698,7 +1730,8 @@ function createWindow(options = {}) {
     minHeight: 620,
     title: 'SecretArea',
     icon: resolveAppIcon(),
-    backgroundColor: '#0e141b',
+    transparent: isTransparentOsPlatform,
+    backgroundColor: isTransparentOsPlatform ? '#00000000' : '#0e141b',
     autoHideMenuBar: true,
     fullScreenable: true,
     show: false,
@@ -2029,6 +2062,13 @@ app.whenReady().then(async () => {
     writeSettings: writeDesktopLauncherSettings,
     getDownloadSnapshot: () => downloadManager.getSnapshot(),
     testTorrentConnection: () => downloadManager.testTorrentConnection(),
+    getLifecyclePrefs: () => downloadManager.getQbitLifecyclePrefs(),
+    onClientLaunched: () =>
+      downloadManager.ensureQbitConnected({
+        trigger: 'manual',
+        allowAutoStart: false,
+        ignoreUserQuit: true,
+      }),
   });
   qbitSetupManager.registerIpc(ipcMain, isTrustedSender);
 

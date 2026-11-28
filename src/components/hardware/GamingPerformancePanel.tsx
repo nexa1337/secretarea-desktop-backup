@@ -271,7 +271,7 @@ export function GamingPerformancePanel({
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-start gap-3 min-w-0">
             <div className="sa-icon-badge w-9 h-9 flex items-center justify-center shrink-0">
-              <GameController weight="duotone" className="w-5 h-5" />
+              <GameController className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <h2 className="font-display text-[16px] font-bold text-slate-900 dark:text-white">{t.gamingTitle}</h2>

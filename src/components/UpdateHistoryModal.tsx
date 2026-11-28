@@ -192,7 +192,7 @@ export function UpdateHistoryModal({
 
   return (
     <div
-      className="fixed inset-0 z-[98] bg-slate-950/65 dark:bg-black/80 flex items-center justify-center p-4"
+      className="fixed inset-0 z-[98] bg-slate-950/70 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
       aria-label={t.title}
@@ -202,27 +202,27 @@ export function UpdateHistoryModal({
         onClick={(e) => e.stopPropagation()}
         className={`sa-ps5-panel w-full max-w-2xl max-h-[88dvh] flex flex-col rounded-[var(--sa-card-radius)] border shadow-2xl overflow-hidden ${
           isPs5Theme
-            ? 'bg-[#031333]/96 border-white/[0.18] text-white'
+            ? 'bg-[#031333]/98 border-white/[0.18] text-white'
             : isXboxTheme
-            ? 'bg-[#081b0c]/96 border-[#52e042]/35 text-[#ecfdf0]'
-            : 'bg-[var(--sa-bg-surface-solid)] border-[var(--sa-border-strong)] text-[var(--sa-text-primary)]'
+            ? 'bg-[#081b0c]/98 border-[#52e042]/35 text-[#ecfdf0]'
+            : 'bg-white dark:bg-[#141a23] border-[var(--sa-border-strong)] text-[var(--sa-text-primary)]'
         }`}
       >
         {/* Header */}
         <div
           className={`px-5 py-4 border-b flex items-center justify-between gap-3 shrink-0 ${
             isConsoleTheme
-              ? 'border-white/[0.08]'
-              : 'bg-slate-50 border-slate-200 dark:bg-transparent dark:border-white/[0.08]'
+              ? 'border-white/[0.08] bg-white/[0.03]'
+              : 'bg-slate-50 border-slate-200 dark:bg-[#11161e] dark:border-white/[0.08]'
           }`}
         >
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="sa-icon-badge w-8 h-8 shrink-0">
-              <ClockCounterClockwise className="w-4 h-4" />
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="sa-icon-badge w-9 h-9">
+              <ClockCounterClockwise className="w-[18px] h-[18px]" />
             </div>
             <div className="min-w-0">
               <h2
-                className={`text-[15px] font-bold leading-tight truncate ${
+                className={`text-[16px] font-semibold tracking-normal leading-snug truncate ${
                   isConsoleTheme ? 'text-white' : 'text-slate-900 dark:text-white'
                 }`}
               >
@@ -343,7 +343,6 @@ export function UpdateHistoryModal({
           >
             <div className="flex items-center gap-2.5 min-w-0">
               <Sparkle
-                weight="duotone"
                 className={`w-4.5 h-4.5 shrink-0 ${
                   isXboxTheme
                     ? 'text-[#6ee755]'
@@ -404,9 +403,9 @@ export function UpdateHistoryModal({
                   key={filter.id}
                   type="button"
                   onClick={() => setCategoryFilter(filter.id)}
-                  className={`px-2.5 py-1 rounded-[var(--sa-btn-radius)] text-[11px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                  className={`px-3 py-1.5 rounded-[var(--sa-btn-radius)] text-[12px] font-semibold border transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
                     active
-                      ? 'bg-[var(--sa-accent)] border-[var(--sa-secondary)] text-[var(--sa-accent-fg)]'
+                      ? 'bg-[var(--sa-btn-bg,var(--sa-accent))] border-[var(--sa-btn-border,var(--sa-secondary))] text-[var(--sa-btn-fg,var(--sa-accent-fg))]'
                       : isConsoleTheme
                       ? 'bg-white/[0.06] border-transparent text-[#b8c7dc] hover:bg-white/[0.12]'
                       : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-transparent dark:bg-white/[0.06] dark:text-[#b8c7dc] dark:hover:bg-white/[0.12]'
@@ -570,7 +569,16 @@ export function UpdateHistoryModal({
                     >
                       {formattedDate && <div>{formattedDate}</div>}
                       <div>
-                        {release.items.length} {t.changesSuffix}
+                        {release.items.length}{' '}
+                        {release.items.length === 1
+                          ? language === 'fr'
+                            ? 'modification'
+                            : language === 'es'
+                            ? 'cambio'
+                            : language === 'ar'
+                            ? 'تغيير'
+                            : 'change'
+                          : t.changesSuffix}
                       </div>
                     </div>
                   </div>
@@ -603,7 +611,6 @@ export function UpdateHistoryModal({
                             className="flex items-start gap-2 pb-2 last:pb-0 border-b last:border-b-0 border-slate-200/70 dark:border-white/[0.06]"
                           >
                             <CategoryIcon
-                              weight="duotone"
                               className={`w-3.5 h-3.5 mt-0.5 shrink-0 ${categoryColor}`}
                             />
                             <div className="min-w-0 space-y-0.5">

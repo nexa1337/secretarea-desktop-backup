@@ -34,7 +34,7 @@ if (
 }
 
 createRoot(document.getElementById('root')!).render(
-  <IconContext.Provider value={{ weight: 'duotone' }}>
+  <IconContext.Provider value={{ weight: 'regular' }}>
     <App />
   </IconContext.Provider>
 );

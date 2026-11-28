@@ -129,6 +129,12 @@ interface SecretAreaAppearanceBridge {
   onSystemAppearanceChange: (
     callback: (payload: SystemAppearancePayload) => void
   ) => () => void;
+  setWindowTheme?: (payload: {
+    activeTheme: string;
+    activeOsTheme: string;
+    lightMode: boolean;
+    customEnabled: boolean;
+  }) => Promise<{ ok: boolean } | null>;
 }
 
 interface SecretAreaSystemBridge {

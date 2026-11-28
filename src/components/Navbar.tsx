@@ -209,7 +209,7 @@ export const Navbar = memo(function Navbar({
                     : 'bg-gradient-to-br from-[#0284c7] to-[#1d4ed8] dark:from-[#1a9fff] dark:to-[#1256a0]'
                 }`}
               >
-                <Shield weight="duotone" className="w-4 h-4 text-white" />
+                <Shield className="w-4 h-4 text-white" />
               </div>
             )}
 

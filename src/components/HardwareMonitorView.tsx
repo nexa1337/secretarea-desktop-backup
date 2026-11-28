@@ -804,12 +804,12 @@ export function HardwareMonitorView({
         <section className="sa-ps5-panel rounded-[var(--sa-card-radius)] bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div className="space-y-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <div className="sa-icon-badge w-9 h-9 shrink-0">
-                  <Pulse weight="duotone" className="w-5 h-5" />
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="sa-icon-badge w-9 h-9">
+                  <Pulse className="w-[18px] h-[18px]" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="font-display text-[19px] sm:text-[22px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+                  <h1 className="font-display text-[19px] sm:text-[21px] font-semibold tracking-normal text-slate-900 dark:text-white truncate">
                     {t.pageTitle}
                   </h1>
                   <p className="text-[12.5px] sm:text-[13px] text-slate-600 dark:text-[#9cb0c9]">
@@ -989,7 +989,7 @@ export function HardwareMonitorView({
                     : 'bg-white dark:bg-[#171d25] border-slate-200 dark:border-white/[0.08] text-slate-700 dark:text-[#cbd5e1] hover:bg-slate-100 dark:hover:bg-[#1e2633]'
                 }`}
               >
-                <Icon weight={active ? 'fill' : 'duotone'} className="w-4 h-4 shrink-0" />
+                <Icon weight={active ? 'fill' : 'regular'} className="w-4 h-4 shrink-0" />
                 <span>{label}</span>
               </button>
             );
@@ -1437,7 +1437,7 @@ export function HardwareMonitorView({
             <article className="sa-ps5-panel rounded-[var(--sa-card-radius)] bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md space-y-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Cpu weight="duotone" className="w-5 h-5 text-[var(--sa-accent)] shrink-0" />
+                  <Cpu className="w-5 h-5 text-[var(--sa-accent)] shrink-0" />
                   <h3 className="text-[15px] font-bold text-slate-900 dark:text-white truncate">
                     {t.cpuTitle}
                   </h3>
@@ -1532,7 +1532,7 @@ export function HardwareMonitorView({
             <article className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] p-4 sm:p-5 shadow-xs dark:shadow-md space-y-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <Memory weight="duotone" className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
+                  <Memory className="w-5 h-5 text-emerald-600 dark:text-[#34d399] shrink-0" />
                   <h3 className="text-[15px] font-bold text-slate-900 dark:text-white truncate">
                     {t.ramTitle}
                   </h3>
@@ -1610,7 +1610,6 @@ export function HardwareMonitorView({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <GraphicsCard
-                  weight="duotone"
                   className="w-5 h-5 text-violet-600 dark:text-[#a78bfa] shrink-0"
                 />
                 <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">
@@ -1767,7 +1766,6 @@ export function HardwareMonitorView({
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <HardDrive
-                    weight="duotone"
                     className="w-5 h-5 text-amber-600 dark:text-[#fbbf24] shrink-0"
                   />
                   <h3 className="text-[15px] font-bold text-slate-900 dark:text-white">
@@ -1884,7 +1882,6 @@ export function HardwareMonitorView({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <WifiHigh
-                    weight="duotone"
                     className="w-5 h-5 text-[var(--sa-accent)] shrink-0"
                   />
                   <h3 className="text-[15px] font-bold text-slate-900 dark:text-white truncate">

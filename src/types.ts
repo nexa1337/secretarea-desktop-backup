@@ -272,6 +272,39 @@ export interface TorrentConnectionTestResult {
   hint?: string;
 }
 
+export type QbitConnectionState =
+  | 'idle'
+  | 'checking'
+  | 'starting'
+  | 'connecting'
+  | 'connected'
+  | 'auth_required'
+  | 'not_installed'
+  | 'webui_disabled'
+  | 'failed';
+
+export interface QbitConnectionDetail {
+  reasonCode: string;
+  hint?: string | null;
+  processRunning: boolean;
+  processName?: string | null;
+  managedByApp?: boolean;
+  webUiEnabledInConfig?: boolean | null;
+  detectedConfigPort?: number | null;
+  detectedOpenPorts?: number[];
+  httpsEnabledInConfig?: boolean;
+  attempt?: number;
+  maxAttempts?: number;
+  lastConnectedAt?: number | null;
+}
+
+export interface QbitLifecyclePreferences {
+  autoStartQbit: boolean;
+  keepQbitRunningOnClose: boolean;
+  launchQbitMinimized: boolean;
+  autoReconnect: boolean;
+}
+
 export interface DownloadManagerSnapshot {
   tasks: DownloadTask[];
   downloadFolder: string;
@@ -281,6 +314,9 @@ export interface DownloadManagerSnapshot {
   torrentVersion?: string | null;
   torrentWebApiVersion?: string | null;
   torrentError?: string | null;
+  torrentConnectionState?: QbitConnectionState;
+  torrentConnectionDetail?: QbitConnectionDetail;
+  qbitLifecyclePrefs?: QbitLifecyclePreferences;
 }
 
 export type QbitSetupStage =

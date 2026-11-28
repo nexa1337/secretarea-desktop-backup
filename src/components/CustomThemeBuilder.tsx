@@ -194,10 +194,10 @@ export function CustomThemeBuilder({
               color: contrastEval.recommendedFg,
             }}
           >
-            <Swatches weight="duotone" className="w-4.5 h-4.5" />
+            <Swatches className="w-4.5 h-4.5" />
           </span>
           <div className="space-y-0.5 min-w-0">
-            <h3 className="text-[14px] sm:text-[14.5px] font-bold text-slate-900 dark:text-white tracking-tight">
+            <h3 className="text-[14px] sm:text-[14.5px] font-semibold text-slate-900 dark:text-white tracking-normal">
               {t.sectionTitle}
             </h3>
             <p className="text-[12px] text-slate-600 dark:text-[#8b9bb4] leading-relaxed">
@@ -658,7 +658,6 @@ export function CustomThemeBuilder({
                 }}
               >
                 <GameController
-                  weight="duotone"
                   className="w-6 h-6 opacity-90"
                   style={{ color: contrastEval.recommendedFg }}
                 />

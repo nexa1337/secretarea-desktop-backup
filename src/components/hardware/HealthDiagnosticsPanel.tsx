@@ -202,7 +202,7 @@ export function HealthDiagnosticsPanel({
                   : 'bg-slate-100 dark:bg-white/[0.05] border-slate-200 dark:border-white/[0.1] text-slate-600 dark:text-[#9cb0c9]'
               }`}
             >
-              <ShieldCheck weight="duotone" className="w-4 h-4 shrink-0" />
+              <ShieldCheck className="w-4 h-4 shrink-0" />
               <span>{privacyShield ? t.intelPrivacyOn : t.intelPrivacyOff}</span>
             </button>
 
@@ -320,7 +320,7 @@ export function HealthDiagnosticsPanel({
       <ExpandablePanel
         title={t.healthBreakdownTitle}
         subtitle={assessment.bottleneckSummary.explanation}
-        icon={<Heartbeat weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Heartbeat className="w-4.5 h-4.5" />}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {assessment.componentScores.map((c) => {
@@ -364,7 +364,7 @@ export function HealthDiagnosticsPanel({
             ? `${t.intelSourceLabel}: ${inventory.fans.sensorSource}`
             : t.fanNoSourceHint
         }
-        icon={<Fan weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Fan className="w-4.5 h-4.5" />}
       >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Fans Inventory */}
@@ -475,7 +475,7 @@ export function HealthDiagnosticsPanel({
       <ExpandablePanel
         title={t.errorsDriversTitle}
         subtitle={t.errorsDriversSubtitle}
-        icon={<Wrench weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Wrench className="w-4.5 h-4.5" />}
         defaultExpanded={false}
       >
         <div className="space-y-5">

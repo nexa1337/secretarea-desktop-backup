@@ -19,8 +19,11 @@ import {
   MagnifyingGlass,
   Pause,
   Play,
+  PlugsConnected,
   Plus,
+  Power,
   Prohibit,
+  SpinnerGap,
   Trash,
   WarningCircle,
   X,
@@ -65,6 +68,10 @@ interface DownloadsViewProps {
   onOpenExternal: (url: string) => void;
   onOpenTorrentSettings: () => void;
   onOpenQbitSetupWizard?: () => void;
+  onReconnectTorrent?: () => Promise<void> | void;
+  onStartQbitBackground?: () => Promise<void> | void;
+  onQuitQbit?: () => Promise<void> | void;
+  onApplyDetectedPort?: (port: number) => Promise<void> | void;
 }
 
 function getSourceIcon(source: DownloadSourceType) {
@@ -523,6 +530,10 @@ export function DownloadsView({
   onOpenExternal,
   onOpenTorrentSettings,
   onOpenQbitSetupWizard,
+  onReconnectTorrent,
+  onStartQbitBackground,
+  onQuitQbit,
+  onApplyDetectedPort,
 }: DownloadsViewProps) {
   const tr = getTranslations(language);
   const t = tr.downloads;
@@ -714,10 +725,10 @@ export function DownloadsView({
         <div className="sa-section-header flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-white/[0.08]">
           <div className="space-y-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2.5">
-              <span className="sa-icon-badge w-9 h-9 flex items-center justify-center shrink-0">
-                <DownloadSimple weight="duotone" className="w-5 h-5" />
+              <span className="sa-icon-badge w-9 h-9">
+                <DownloadSimple className="w-[18px] h-[18px]" />
               </span>
-              <h1 className="font-display text-lg sm:text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+              <h1 className="font-display text-lg sm:text-xl font-semibold tracking-normal text-slate-900 dark:text-white">
                 {t.pageTitle}
               </h1>
             </div>
@@ -789,84 +800,240 @@ export function DownloadsView({
           </div>
         )}
 
-        {/* Always-Visible qBittorrent Connection Indicator */}
-        <div
-          role="status"
-          aria-live="polite"
-          className={`sa-ps5-subpanel rounded-xl px-4 py-3 border flex flex-wrap items-center justify-between gap-3 ${
-            isDesktopApp && snapshot.torrentConnected
-              ? 'bg-emerald-50/75 dark:bg-emerald-950/25 border-emerald-300/70 dark:border-emerald-500/30'
-              : 'bg-white dark:bg-[#171d25] border-slate-200 dark:border-white/[0.08]'
-          }`}
-        >
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <Magnet
-              className={`w-4.5 h-4.5 shrink-0 ${
-                isDesktopApp && snapshot.torrentConnected
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : 'text-amber-600 dark:text-amber-400'
-              }`}
-            />
-            <span
-              aria-hidden="true"
-              className={`w-2 h-2 rounded-full shrink-0 ${
-                isDesktopApp && snapshot.torrentConnected
-                  ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
-                  : 'bg-amber-500 dark:bg-amber-400'
-              }`}
-            />
-            <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
-              <span
-                className={`font-semibold ${
-                  isDesktopApp && snapshot.torrentConnected
-                    ? 'text-emerald-800 dark:text-emerald-300'
-                    : 'text-slate-800 dark:text-[#e5e9f0]'
-                }`}
-              >
-                {isDesktopApp && snapshot.torrentConnected
-                  ? t.torrentConnected
-                  : t.torrentDisconnected}
-              </span>
-              {isDesktopApp && snapshot.torrentConnected && snapshot.torrentVersion && (
-                <span dir="ltr" className="font-mono-tabular text-slate-600 dark:text-[#9cb0c9]">
-                  · {snapshot.torrentVersion}
-                  {snapshot.torrentWebApiVersion ? ` (API ${snapshot.torrentWebApiVersion})` : ''}
-                </span>
-              )}
-              {!isDesktopApp ? (
-                <span className="text-[12px] text-slate-500 dark:text-[#8b9bb4]">
-                  · {t.torrentWebPreviewStatus}
-                </span>
-              ) : !snapshot.torrentConnected && snapshot.torrentError ? (
-                <span className="text-[12px] text-amber-700 dark:text-amber-300 truncate max-w-full sm:max-w-xl">
-                  · {snapshot.torrentError}
-                </span>
-              ) : null}
-            </div>
-          </div>
+        {/* Always-Visible qBittorrent Connection & Lifecycle Indicator */}
+        {(() => {
+          const detail = snapshot.torrentConnectionDetail;
+          const qbitState = !isDesktopApp
+            ? 'idle'
+            : snapshot.torrentConnectionState ||
+              (snapshot.torrentConnected ? 'connected' : 'failed');
+          const isConnectingPhase =
+            qbitState === 'checking' ||
+            qbitState === 'starting' ||
+            qbitState === 'connecting';
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            {onOpenQbitSetupWizard && (
-              <button
-                type="button"
-                onClick={onOpenQbitSetupWizard}
-                className="sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]"
-              >
-                <DownloadSimple className="w-3.5 h-3.5" />
-                <span>{tr.settings.torrentManageSetupBtn}</span>
-              </button>
-            )}
+          let statusLabel = t.torrentDisconnected;
+          let dotClass = 'bg-amber-500 dark:bg-amber-400';
+          let iconClass = 'text-amber-600 dark:text-amber-400';
+          let textClass = 'text-slate-800 dark:text-[#e5e9f0]';
+          let cardClass =
+            'bg-white dark:bg-[#171d25] border-slate-200 dark:border-white/[0.08]';
 
-            <button
-              type="button"
-              onClick={onOpenTorrentSettings}
-              className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+          if (!isDesktopApp) {
+            statusLabel = t.torrentDisconnected;
+          } else if (qbitState === 'connected') {
+            statusLabel = t.torrentConnected;
+            dotClass = 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]';
+            iconClass = 'text-emerald-600 dark:text-emerald-400';
+            textClass = 'text-emerald-800 dark:text-emerald-300';
+            cardClass =
+              'bg-emerald-50/75 dark:bg-emerald-950/25 border-emerald-300/70 dark:border-emerald-500/30';
+          } else if (qbitState === 'checking') {
+            statusLabel = t.torrentChecking;
+            dotClass = 'bg-sky-500 animate-pulse';
+            iconClass = 'text-sky-600 dark:text-sky-400';
+            textClass = 'text-sky-800 dark:text-sky-300';
+          } else if (qbitState === 'starting') {
+            statusLabel = t.torrentStarting;
+            dotClass = 'bg-sky-500 animate-pulse';
+            iconClass = 'text-sky-600 dark:text-sky-400';
+            textClass = 'text-sky-800 dark:text-sky-300';
+          } else if (qbitState === 'connecting') {
+            statusLabel = t.torrentConnecting;
+            dotClass = 'bg-sky-500 animate-pulse';
+            iconClass = 'text-sky-600 dark:text-sky-400';
+            textClass = 'text-sky-800 dark:text-sky-300';
+          } else if (qbitState === 'auth_required') {
+            statusLabel = t.torrentAuthRequired;
+            dotClass = 'bg-amber-500';
+            iconClass = 'text-amber-600 dark:text-amber-400';
+            textClass = 'text-amber-800 dark:text-amber-300';
+          } else if (qbitState === 'not_installed') {
+            statusLabel = t.torrentNotInstalled;
+            dotClass = 'bg-slate-400 dark:bg-slate-500';
+            iconClass = 'text-slate-500 dark:text-[#8b9bb4]';
+            textClass = 'text-slate-700 dark:text-[#cbd5e1]';
+          } else if (qbitState === 'webui_disabled') {
+            statusLabel = t.torrentWebUiDisabled;
+            dotClass = 'bg-amber-500';
+            iconClass = 'text-amber-600 dark:text-amber-400';
+            textClass = 'text-amber-800 dark:text-amber-300';
+          } else if (qbitState === 'failed') {
+            statusLabel = t.torrentFailed;
+            dotClass = 'bg-rose-500';
+            iconClass = 'text-rose-600 dark:text-rose-400';
+            textClass = 'text-rose-700 dark:text-rose-300';
+          }
+
+          const showPortMismatchFix =
+            isDesktopApp &&
+            detail?.reasonCode === 'port_mismatch' &&
+            typeof detail?.detectedConfigPort === 'number' &&
+            detail.detectedConfigPort > 0 &&
+            Boolean(onApplyDetectedPort);
+
+          const showStartBackgroundBtn =
+            isDesktopApp &&
+            qbitState !== 'connected' &&
+            qbitState !== 'not_installed' &&
+            !isConnectingPhase &&
+            !detail?.processRunning &&
+            Boolean(onStartQbitBackground);
+
+          const showReconnectBtn =
+            isDesktopApp &&
+            qbitState !== 'connected' &&
+            qbitState !== 'not_installed' &&
+            !isConnectingPhase &&
+            Boolean(onReconnectTorrent) &&
+            !showStartBackgroundBtn;
+
+          const showQuitQbitBtn =
+            isDesktopApp &&
+            (qbitState === 'connected' || Boolean(detail?.processRunning)) &&
+            Boolean(onQuitQbit);
+
+          return (
+            <div
+              role="status"
+              aria-live="polite"
+              className={`sa-ps5-subpanel rounded-xl px-4 py-3 border flex flex-wrap items-center justify-between gap-3 ${cardClass}`}
             >
-              <Gear className="w-3.5 h-3.5" />
-              <span>{t.configureTorrentBtn}</span>
-            </button>
-          </div>
-        </div>
+              <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+                {isConnectingPhase ? (
+                  <SpinnerGap className={`w-4.5 h-4.5 shrink-0 animate-spin ${iconClass}`} />
+                ) : (
+                  <Magnet className={`w-4.5 h-4.5 shrink-0 ${iconClass}`} />
+                )}
+                <span aria-hidden="true" className={`w-2 h-2 rounded-full shrink-0 mt-1.5 sm:mt-0 ${dotClass}`} />
+                <div className="min-w-0 space-y-0.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
+                    <span className={`font-semibold ${textClass}`}>{statusLabel}</span>
+                    {isDesktopApp && qbitState === 'connected' && snapshot.torrentVersion && (
+                      <span dir="ltr" className="font-mono-tabular text-slate-600 dark:text-[#9cb0c9]">
+                        · {snapshot.torrentVersion}
+                        {snapshot.torrentWebApiVersion ? ` (API ${snapshot.torrentWebApiVersion})` : ''}
+                      </span>
+                    )}
+                    {isDesktopApp &&
+                      qbitState === 'connecting' &&
+                      detail?.maxAttempts &&
+                      detail.maxAttempts > 1 &&
+                      detail.attempt ? (
+                        <span dir="ltr" className="font-mono-tabular text-[11.5px] text-slate-500 dark:text-[#8b9bb4]">
+                          ({detail.attempt}/{detail.maxAttempts})
+                        </span>
+                      ) : null}
+                    {!isDesktopApp ? (
+                      <span className="text-[12px] text-slate-500 dark:text-[#8b9bb4]">
+                        · {t.torrentWebPreviewStatus}
+                      </span>
+                    ) : qbitState !== 'connected' && snapshot.torrentError ? (
+                      <span className="text-[12px] text-slate-600 dark:text-[#9cb0c9] truncate max-w-full sm:max-w-xl">
+                        · {snapshot.torrentError}
+                      </span>
+                    ) : null}
+                  </div>
+                  {isDesktopApp && qbitState !== 'connected' && detail?.hint && (
+                    <p className="text-[11.5px] text-slate-500 dark:text-[#8b9bb4] leading-snug">
+                      {detail.hint}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {showPortMismatchFix && detail?.detectedConfigPort && (
+                  <button
+                    type="button"
+                    onClick={() => void onApplyDetectedPort?.(detail.detectedConfigPort!)}
+                    className="sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <PlugsConnected className="w-3.5 h-3.5" />
+                    <span>
+                      {t.torrentSwitchPortBtn}{' '}
+                      <span dir="ltr" className="font-mono-tabular">
+                        {detail.detectedConfigPort}
+                      </span>
+                    </span>
+                  </button>
+                )}
+
+                {showStartBackgroundBtn && (
+                  <button
+                    type="button"
+                    onClick={() => void onStartQbitBackground?.()}
+                    className="sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <Play weight="fill" className="w-3.5 h-3.5" />
+                    <span>{t.torrentStartBackgroundBtn}</span>
+                  </button>
+                )}
+
+                {showReconnectBtn && (
+                  <button
+                    type="button"
+                    onClick={() => void onReconnectTorrent?.()}
+                    className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <ArrowClockwise className="w-3.5 h-3.5" />
+                    <span>
+                      {qbitState === 'auth_required'
+                        ? t.torrentReconnectBtn
+                        : t.torrentReconnectBtn}
+                    </span>
+                  </button>
+                )}
+
+                {qbitState === 'auth_required' && (
+                  <button
+                    type="button"
+                    onClick={onOpenTorrentSettings}
+                    className="sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <Gear className="w-3.5 h-3.5" />
+                    <span>{t.torrentFixAuthBtn}</span>
+                  </button>
+                )}
+
+                {showQuitQbitBtn && (
+                  <button
+                    type="button"
+                    onClick={() => void onQuitQbit?.()}
+                    className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+                  >
+                    <Power className="w-3.5 h-3.5 text-rose-500 dark:text-rose-400" />
+                    <span>{t.torrentQuitQbitBtn}</span>
+                  </button>
+                )}
+
+                {onOpenQbitSetupWizard && (
+                  <button
+                    type="button"
+                    onClick={onOpenQbitSetupWizard}
+                    className={
+                      qbitState === 'not_installed'
+                        ? 'sa-btn-primary min-h-[36px] px-3 py-1.5 text-[12px]'
+                        : 'sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]'
+                    }
+                  >
+                    <DownloadSimple className="w-3.5 h-3.5" />
+                    <span>{tr.settings.torrentManageSetupBtn}</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onOpenTorrentSettings}
+                  className="sa-btn-secondary min-h-[36px] px-3 py-1.5 text-[12px]"
+                >
+                  <Gear className="w-3.5 h-3.5" />
+                  <span>{t.configureTorrentBtn}</span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Quick-Add URL / Magnet / .torrent Bar */}
         <form
@@ -1045,10 +1212,10 @@ export function DownloadsView({
         {/* Downloads List / Empty State */}
         {filteredTasks.length === 0 ? (
           <div className="sa-ps5-panel rounded-xl bg-white dark:bg-[#171d25] border border-slate-200 dark:border-white/[0.08] py-14 px-6 text-center space-y-2.5">
-            <div className="sa-icon-badge w-12 h-12 mx-auto flex items-center justify-center">
-              <FileArrowDown weight="duotone" className="w-6 h-6" />
+            <div className="sa-icon-badge w-12 h-12 mx-auto">
+              <FileArrowDown className="w-6 h-6" />
             </div>
-            <h2 className="text-[15px] font-bold text-slate-900 dark:text-white">
+            <h2 className="text-[15.5px] font-semibold text-slate-900 dark:text-white">
               {t.emptyTitle}
             </h2>
             <p className="text-[12.5px] text-slate-500 dark:text-[#8b9bb4] max-w-md mx-auto leading-relaxed">

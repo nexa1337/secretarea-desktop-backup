@@ -73,7 +73,7 @@ export function SystemInventoryPortsPanel({
         <ExpandablePanel
           title={t.sysIdTitle}
           subtitle={inventory.system.chassisTypeLabel || inventory.system.formFactor.toUpperCase()}
-          icon={isLaptop ? <Laptop weight="duotone" className="w-4.5 h-4.5" /> : <DesktopTower weight="duotone" className="w-4.5 h-4.5" />}
+          icon={isLaptop ? <Laptop className="w-4.5 h-4.5" /> : <DesktopTower className="w-4.5 h-4.5" />}
           rightSlot={<ProvenanceTag provenance={inventory.system.provenance} labels={provenanceLabels} />}
         >
           <div className="space-y-0.5">
@@ -131,7 +131,7 @@ export function SystemInventoryPortsPanel({
         <ExpandablePanel
           title={t.moboTitle}
           subtitle={`${inventory.motherboard.manufacturer || ''} ${inventory.motherboard.model || ''}`.trim() || t.intelUnavailable}
-          icon={<Circuitry weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Circuitry className="w-4.5 h-4.5" />}
           rightSlot={<ProvenanceTag provenance={inventory.motherboard.provenance} labels={provenanceLabels} />}
         >
           <div className="space-y-0.5">
@@ -191,7 +191,7 @@ export function SystemInventoryPortsPanel({
       <ExpandablePanel
         title={t.portsTitle}
         subtitle={t.portsSubtitle}
-        icon={<Plug weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Plug className="w-4.5 h-4.5" />}
         rightSlot={
           <ProvenanceTag
             provenance={
@@ -289,7 +289,7 @@ export function SystemInventoryPortsPanel({
       <ExpandablePanel
         title={t.storageSmartTitle}
         subtitle={t.storageSmartSubtitle}
-        icon={<HardDrive weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<HardDrive className="w-4.5 h-4.5" />}
       >
         {inventory.storage.length === 0 ? (
           <p className="text-[12.5px] text-slate-500 dark:text-[#8b9bb4]">{t.noStorageDetected}</p>
@@ -371,7 +371,7 @@ export function SystemInventoryPortsPanel({
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ExpandablePanel
           title={t.cpuGpuDeepTitle}
-          icon={<Cpu weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Cpu className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           <div className="space-y-4">
@@ -433,7 +433,7 @@ export function SystemInventoryPortsPanel({
         <ExpandablePanel
           title={t.ramDimmsTitle}
           subtitle={`${inventory.memory.slotsUsed ?? t.naValue} / ${inventory.memory.slotsTotal ?? t.naValue} ${t.ramSlotsLabel} · ${inventory.memory.channelMode || t.intelUnknown}`}
-          icon={<Memory weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Memory className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           <div className="space-y-3">
@@ -483,7 +483,7 @@ export function SystemInventoryPortsPanel({
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <ExpandablePanel
           title={t.displaysDeepTitle}
-          icon={<Monitor weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<Monitor className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           {inventory.displays.length === 0 ? (
@@ -516,7 +516,7 @@ export function SystemInventoryPortsPanel({
 
         <ExpandablePanel
           title={t.powerPsuBatteryTitle}
-          icon={<BatteryCharging weight="duotone" className="w-4.5 h-4.5" />}
+          icon={<BatteryCharging className="w-4.5 h-4.5" />}
           defaultExpanded={false}
         >
           <div className="space-y-3">
@@ -577,7 +577,7 @@ export function SystemInventoryPortsPanel({
       <ExpandablePanel
         title={t.peripheralsNetTitle}
         subtitle={`${inventory.network.adapters.length} ${t.adaptersLabel} · ${inventory.peripherals.length} ${t.peripheralsLabel} · ${inventory.otherComponents.length} ${t.systemComponentsLabel}`}
-        icon={<Usb weight="duotone" className="w-4.5 h-4.5" />}
+        icon={<Usb className="w-4.5 h-4.5" />}
         defaultExpanded={false}
       >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

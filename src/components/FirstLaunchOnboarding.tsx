@@ -414,7 +414,7 @@ export function FirstLaunchOnboarding({
                     : 'bg-gradient-to-br from-[#0284c7] to-[#1d4ed8]'
                 }`}
               >
-                <Shield weight="duotone" className="w-4 h-4 text-white" />
+                <Shield className="w-4 h-4 text-white" />
               </div>
             )}
             <span className="font-display text-[15.5px] font-bold tracking-tight whitespace-nowrap">
@@ -552,7 +552,6 @@ export function FirstLaunchOnboarding({
                         />
                       ) : (
                         <Shield
-                          weight="duotone"
                           className="w-8 h-8 text-[var(--sa-accent)]"
                         />
                       )}
@@ -624,7 +623,7 @@ export function FirstLaunchOnboarding({
               <div className="sa-welcome-stagger-2 sa-ps5-subpanel bg-[var(--sa-bg-subsurface)] p-5 sm:p-6 lg:p-7 flex flex-col justify-center gap-3.5 min-w-0">
                 <div className="space-y-2 pb-3 border-b border-[var(--sa-border-subtle)]">
                   <div className="flex items-center gap-2 text-[14.5px] font-bold text-slate-900 dark:text-white">
-                    <Sparkle weight="duotone" className="w-4.5 h-4.5 text-[var(--sa-accent)] shrink-0" />
+                    <Sparkle className="w-4.5 h-4.5 text-[var(--sa-accent)] shrink-0" />
                     <span>{t.whatIsSecretAreaTitle}</span>
                   </div>
                   <p className="text-[13px] sm:text-[13.5px] font-medium text-slate-700 dark:text-[#c7d5e8] leading-relaxed">
@@ -996,7 +995,7 @@ export function FirstLaunchOnboarding({
                       className="w-full h-full object-contain"
                     />
                   ) : (
-                    <Magnet weight="duotone" className="w-5 h-5 text-[var(--sa-accent)]" />
+                    <Magnet className="w-5 h-5 text-[var(--sa-accent)]" />
                   )}
                 </div>
                 <div className="min-w-0">
@@ -1858,7 +1857,6 @@ export function FirstLaunchOnboarding({
                   <div className="flex items-center justify-between gap-3 min-w-0">
                     <div className="flex items-center gap-2 min-w-0 text-[13px] font-bold text-slate-900 dark:text-white whitespace-nowrap">
                       <Sparkle
-                        weight="duotone"
                         className="w-4 h-4 text-[var(--sa-accent)] shrink-0"
                       />
                       <span className="truncate">{t.readyLaunchHeading}</span>
@@ -1888,7 +1886,7 @@ export function FirstLaunchOnboarding({
                               : 'bg-[var(--sa-bg-subsurface)] text-slate-600 dark:text-[#9cb0c9]'
                           }`}
                         >
-                          <House weight="duotone" className="w-4 h-4" />
+                          <House className="w-4 h-4" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[12.5px] font-bold text-slate-900 dark:text-white whitespace-nowrap truncate">
@@ -1925,7 +1923,7 @@ export function FirstLaunchOnboarding({
                               : 'bg-[var(--sa-bg-subsurface)] text-slate-600 dark:text-[#9cb0c9]'
                           }`}
                         >
-                          <Gear weight="duotone" className="w-4 h-4" />
+                          <Gear className="w-4 h-4" />
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-[12.5px] font-bold text-slate-900 dark:text-white whitespace-nowrap truncate">

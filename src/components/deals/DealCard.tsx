@@ -124,7 +124,6 @@ export const DealCard = memo(function DealCard({
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 px-3 text-center bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 dark:from-[#121923] dark:via-[#192330] dark:to-[#10161e]">
             <GameController
-              weight="duotone"
               className="w-7 h-7 text-slate-400 dark:text-[#6f829c]"
             />
             <span className="text-[11px] font-medium text-slate-500 dark:text-[#7e91ab] line-clamp-1">
